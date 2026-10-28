@@ -50,6 +50,7 @@ pageHead(APP_NAME);
       <div><strong><?= $use['plan'] ?> plan</strong><small id="usageBadge"><?= $use['left'] ?>/<?= $use['allowance'] ?> documents left · <?= $use['credits'] ?> credits</small></div>
       <span><?= $use['pro'] ? 'Top up' : 'Upgrade' ?> <i class="fa-solid fa-arrow-right"></i></span>
     </a>
+    <a class="plan-card plan-card--soft" href="dashboard.php"><div><strong><i class="fa-solid fa-gauge"></i> My dashboard</strong><small>Clients, unpaid invoices & who opened them</small></div><span><i class="fa-solid fa-arrow-right"></i></span></a>
     <a class="plan-card plan-card--soft" href="logo.php"><div><strong><i class="fa-solid fa-palette"></i> Logo maker</strong><small>Make a logo from your initials</small></div><span><i class="fa-solid fa-arrow-right"></i></span></a>
 
     <div class="sidebar-footer">

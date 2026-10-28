@@ -44,4 +44,4 @@ if (is_string($user)) {
     redirect('login.php');
 }
 
-redirect($user['role'] === 'admin' ? 'admin/' : 'chat.php');
+redirect($user['role'] === 'admin' ? 'admin/' : (empty($user['company_name']) ? 'setup.php' : 'chat.php'));

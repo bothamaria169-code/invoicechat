@@ -58,7 +58,7 @@ class BotEngine
             $state = 'onboard_name';
             return [
                 $this->msg("Welcome to *InvoiceChat*! I'll help you create and send professional invoices in minutes."),
-                $this->msg("Let's set up your profile first.\n\nWhat is your company or freelancer name?"),
+                $this->msg("Let's set up your profile first. Prefer a quick form for your logo, banking details and colours? " . APP_URL . "/setup.php\n\nOr answer here: what is your company or freelancer name?"),
             ];
         }
 
@@ -347,7 +347,13 @@ No logo yet? Make one free in a minute: " . APP_URL . "/logo.php"),
         $state     = 'invoice_client';
         $data      = ['doc_type' => $docType];
         $label     = $docType === 'quote' ? 'quote' : 'invoice';
-        return [$this->msg("New {$label} started! What is the *client's name*?")];
+        // Recent clients as one-tap buttons; a new name is typed as before.
+        $recent = $this->db->prepare('SELECT name FROM clients WHERE user_id = ? ORDER BY last_used_at DESC LIMIT 5');
+        $recent->execute([$this->userId]);
+        $names = $recent->fetchAll(\PDO::FETCH_COLUMN);
+        return $names
+            ? [$this->buttons("New {$label} started! Who is it for? Pick a client or type a new name.", $names)]
+            : [$this->msg("New {$label} started! What is the *client's name*?")];
     }
 
     /** Convert the currently active quote into a new invoice. */
@@ -378,6 +384,17 @@ No logo yet? Make one free in a minute: " . APP_URL . "/logo.php"),
     {
         if (strlen($input) < 2) return [$this->msg("Please enter the client's name.")];
         $this->im->update($invoiceId, $this->userId, ['client_name' => $input]);
+        // A saved client: reuse their email and phone, and go straight to the items.
+        $known = $this->db->prepare('SELECT * FROM clients WHERE user_id = ? AND name_key = ?');
+        $known->execute([$this->userId, mb_strtolower(trim($input))]);
+        if (($c = $known->fetch()) && ($c['email'] || $c['phone'])) {
+            $this->im->update($invoiceId, $this->userId, array_filter(['client_email' => $c['email'], 'client_phone' => $c['phone']]));
+            $state = 'product_name';
+            $on = implode(' · ', array_filter([$c['email'], $c['phone']]));
+            return [$this->msg("Using *{$c['name']}*" . ($on ? " ({$on})" : '') . ".
+
+What is the *product or service name*?")];
+        }
         $state = 'invoice_client_email';
         return [
             $this->buttons("Client email address? (for sending the invoice)", ['Skip']),

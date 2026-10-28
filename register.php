@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (registerUser($email, $password, mb_substr($name, 0, 150)) === false) {
                 $error = 'This email is already registered.';
             } else {
-                redirect('chat.php');
+                redirect('setup.php');
             }
         } catch (Throwable $e) {
             error_log('InvoiceChat registration failed: ' . $e->getMessage());

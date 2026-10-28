@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/billing.php';
 require_once dirname(__DIR__) . '/includes/ai.php';
+require_once dirname(__DIR__) . '/includes/documents.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use InvoiceChat\BotEngine;
@@ -166,7 +167,7 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
 
     // Free plan documents carry a small footer — it's also our best advert.
     if (!isPro(freshUser($userId))) {
-        $footer = '<div style="position:fixed;bottom:-18px;left:0;right:0;text-align:center;font-family:DejaVu Sans,sans-serif;font-size:8px;color:#9aa3b2">'
+        $footer = '<div style="position:fixed;bottom:8px;left:0;right:0;text-align:center;font-family:DejaVu Sans,sans-serif;font-size:7.5px;color:#9aa3b2">'
                 . 'Created free with InvoiceChat · ' . e(preg_replace('#^https?://#', '', APP_URL)) . '</div>';
         $html = stripos($html, '</body>') !== false ? str_ireplace('</body>', $footer . '</body>', $html) : $html . $footer;
     }
@@ -192,7 +193,9 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
         $path     = PDF_DIR . $filename;
         file_put_contents($path, $dompdf->output());
 
-        $im->update($invoiceId, $userId, ['pdf_path' => $path, 'status' => 'draft']);
+        $im->update($invoiceId, $userId, ['pdf_path' => $path]);
+        syncClient($userId, $invoiceId);
+        logDocEvent($invoiceId, $userId, 'pdf', $filename);
         $url = signedPdfUrl($filename);
 
         $isQuote = ($invoice['doc_type'] ?? 'invoice') === 'quote';
@@ -242,7 +245,7 @@ function sendEmailInline(PDO $db, int $userId, int $invoiceId, string $toEmail):
         return [['type' => 'text', 'content' => "Failed to send email: {$err}"]];
     }
 
-    $im->update($invoiceId, $userId, ['status' => 'sent']);
+    logDocEvent($invoiceId, $userId, 'email', $toEmail);
     return [
         ['type' => 'text', 'content' => "{$word} sent successfully to *{$toEmail}*!"],
         ['type' => 'buttons', 'content' => "Anything else?",
@@ -283,7 +286,7 @@ function sendWhatsAppInline(PDO $db, int $userId, int $invoiceId, string $phone)
             $wa  = new \InvoiceChat\WhatsApp(WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_API_VERSION);
             $res = $wa->sendDocument($phone, $pdfUrl, basename($pdf), $caption);
             if ($res['ok']) {
-                $im->update($invoiceId, $userId, ['status' => 'sent']);
+                logDocEvent($invoiceId, $userId, 'whatsapp', $phone);
                 return $okMsgs;
             }
             return [['type' => 'text', 'content' =>
@@ -305,16 +308,21 @@ function sendWhatsAppInline(PDO $db, int $userId, int $invoiceId, string $phone)
                 'body'      => "{$caption} from your supplier.",
                 'mediaUrl'  => [$pdfUrl],
             ]);
-            $im->update($invoiceId, $userId, ['status' => 'sent']);
+            logDocEvent($invoiceId, $userId, 'whatsapp', $phone);
             return $okMsgs;
         } catch (\Throwable $e) {
             return [['type' => 'text', 'content' => "WhatsApp sending failed: " . $e->getMessage()]];
         }
     }
 
-    // ── Nothing configured ────────────────────────────────────────
-    return [['type' => 'text', 'content' =>
-        "WhatsApp sending isn't configured yet. Add your Meta WhatsApp Cloud API credentials "
-        . "(WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID) in config/config.php.\n\n"
-        . "For now you can share this PDF link manually:\n{$pdfUrl}"]];
+    // ── No WhatsApp API: the user sends it from their own WhatsApp ─
+    // (a wa.me link with the message and PDF link ready; tapping it is logged).
+    $user = freshUser($userId);
+    $invoice['client_phone'] = $phone;
+    return [
+        ['type' => 'whatsapp', 'invoice_id' => $invoiceId, 'url' => whatsappShareUrl($invoice, $user, $pdfUrl),
+         'label' => "Send {$word} to " . ($phone ?: 'a contact') . ' on WhatsApp'],
+        ['type' => 'buttons', 'content' => 'Tap the green button to open WhatsApp with the message ready, then press send.',
+         'buttons' => $isQuote ? ['/accept – Mark accepted', 'Done'] : ['/paid – Mark as paid', 'Done']],
+    ];
 }

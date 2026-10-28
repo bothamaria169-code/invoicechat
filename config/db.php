@@ -19,8 +19,38 @@ function getDB(): PDO
         }
         require_once dirname(__DIR__) . '/database/migrate.php';
         runMigrations($pdo);
+        adminResetFromSecrets($pdo);
     }
     return $pdo;
+}
+
+/**
+ * Locked out of admin? Add 'admin_reset_password' => 'NewPassword123' to
+ * config/secrets.php and load any page: admin@ (and any address listed in
+ * 'admin_reset_emails') gets that password, the admin role and a cleared
+ * lockout. Each new value is applied once, so later password changes stick.
+ */
+function adminResetFromSecrets(PDO $db): void
+{
+    $pw = (string) secret('admin_reset_password', '');
+    if ($pw === '' || $pw === 'CHANGE_ME') return;
+    $mark = hash('sha256', $pw . '|' . implode(',', (array) secret('admin_reset_emails', [])));
+    $done = $db->query("SELECT v FROM app_settings WHERE k = 'admin_reset_applied'")->fetchColumn();
+    if ($done === $mark) return;
+
+    $hash = password_hash($pw, PASSWORD_DEFAULT);
+    foreach (array_unique(array_merge([ADMIN_EMAIL], array_map('strtolower', (array) secret('admin_reset_emails', [])))) as $email) {
+        $u = $db->prepare('SELECT id FROM users WHERE email = ?');
+        $u->execute([$email]);
+        if ($id = $u->fetchColumn()) {
+            $db->prepare("UPDATE users SET password_hash = ?, role = 'admin', is_active = 1 WHERE id = ?")->execute([$hash, $id]);
+        } else {
+            $db->prepare("INSERT INTO users (email, full_name, password_hash, role, is_active, settings, signup_method) VALUES (?, 'Administrator', ?, 'admin', 1, '{}', 'seed')")->execute([$email, $hash]);
+        }
+        $db->prepare('DELETE FROM login_attempts WHERE email = ?')->execute([$email]);
+    }
+    $db->prepare("REPLACE INTO app_settings (k, v) VALUES ('admin_reset_applied', ?)")->execute([$mark]);
+    error_log('InvoiceChat: admin password reset from secrets.php');
 }
 
 /**

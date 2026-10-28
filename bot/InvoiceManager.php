@@ -60,11 +60,22 @@ class InvoiceManager
             $vals[] = $val;
         }
         if (empty($set)) return;
+        // Paid documents remember when, for the dashboard and reports.
+        if (($fields['status'] ?? null) === 'paid') {
+            $set[] = '`paid_at` = COALESCE(`paid_at`, NOW())';
+        } elseif (isset($fields['status'])) {
+            $set[] = '`paid_at` = NULL';
+        }
         $vals[] = $invoiceId;
         $vals[] = $userId;
-        $this->db->prepare(
+        $stmt = $this->db->prepare(
             'UPDATE invoices SET ' . implode(', ', $set) . ' WHERE id = ? AND user_id = ?'
-        )->execute($vals);
+        );
+        $stmt->execute($vals);
+        if (isset($fields['status']) && $fields['status'] !== 'draft' && $stmt->rowCount()) {
+            $this->db->prepare('INSERT INTO document_events (invoice_id, user_id, kind, detail) VALUES (?, ?, ?, ?)')
+                ->execute([$invoiceId, $userId, $fields['status'] === 'paid' ? 'paid' : 'status', $fields['status']]);
+        }
     }
 
     // ── Items ─────────────────────────────────────────────────────

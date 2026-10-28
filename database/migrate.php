@@ -7,7 +7,7 @@ declare(strict_types=1);
  * the version reached. Works on MySQL and MariaDB (columns are checked in
  * information_schema rather than with MariaDB-only "ADD COLUMN IF NOT EXISTS").
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function runMigrations(PDO $db): void
 {
@@ -28,6 +28,7 @@ function runMigrations(PDO $db): void
         if ($v < 1) migrationV1($db);
         if ($v < 2) migrationV2($db);
         if ($v < 3) migrationV3($db);
+        if ($v < 4) migrationV4($db);
         $db->prepare("REPLACE INTO app_settings (k, v) VALUES ('schema_version', ?)")->execute([(string) SCHEMA_VERSION]);
     } finally {
         $db->query("SELECT RELEASE_LOCK('invoicechat_migrate')");
@@ -333,6 +334,52 @@ function migrationV3(PDO $db): void
         FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE,
         FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Users' own clients, and tracking of how each document was sent and seen. */
+function migrationV4(PDO $db): void
+{
+    $db->exec("CREATE TABLE IF NOT EXISTS clients (
+        id           INT PRIMARY KEY AUTO_INCREMENT,
+        user_id      INT NOT NULL,
+        name         VARCHAR(255) NOT NULL,
+        name_key     VARCHAR(255) NOT NULL,
+        email        VARCHAR(255) NULL,
+        phone        VARCHAR(50) NULL,
+        notes        TEXT NULL,
+        last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_name (user_id, name_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    addColumn($db, 'invoices', 'client_id', 'INT NULL');
+    addColumn($db, 'invoices', 'emailed_at', 'DATETIME NULL');
+    addColumn($db, 'invoices', 'whatsapped_at', 'DATETIME NULL');
+    addColumn($db, 'invoices', 'viewed_at', 'DATETIME NULL');
+    addColumn($db, 'invoices', 'view_count', 'INT NOT NULL DEFAULT 0');
+    addColumn($db, 'invoices', 'paid_at', 'DATETIME NULL');
+
+    $db->exec("CREATE TABLE IF NOT EXISTS document_events (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        invoice_id  INT NOT NULL,
+        user_id     INT NOT NULL,
+        kind        VARCHAR(20) NOT NULL,
+        detail      VARCHAR(255) NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_invoice (invoice_id, created_at),
+        INDEX idx_user (user_id, created_at),
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Clients from existing documents (most recent contact details win).
+    $db->exec("INSERT IGNORE INTO clients (user_id, name, name_key, email, phone, last_used_at)
+               SELECT user_id, TRIM(client_name), LOWER(TRIM(client_name)), client_email, client_phone, created_at
+               FROM invoices WHERE client_name IS NOT NULL AND TRIM(client_name) <> '' ORDER BY created_at DESC");
+    // Older tables can have a different collation from new ones; compare on one.
+    $db->exec("UPDATE invoices i JOIN clients c ON c.user_id = i.user_id
+               AND c.name_key COLLATE utf8mb4_general_ci = LOWER(TRIM(i.client_name)) COLLATE utf8mb4_general_ci
+               SET i.client_id = c.id WHERE i.client_id IS NULL");
+    $db->exec("UPDATE invoices SET paid_at = created_at WHERE status = 'paid' AND paid_at IS NULL");
 }
 
 /** The admin@ account: created if missing, and always kept an active admin. */

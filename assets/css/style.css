@@ -310,7 +310,9 @@ body.app-body { height: 100vh; height: 100dvh; overflow: hidden; }
 .plan-card strong { display: block; font-size: .88rem; }
 .plan-card small { opacity: .85; }
 .plan-card span { font-weight: 800; white-space: nowrap; }
-.plan-card--soft { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.plan-card--soft { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); margin-bottom: .4rem; padding: .55rem .9rem; }
+.msg-wa .msg-file-icon { background: #e7f8ee; color: #128c7e; }
+.msg-wa { border-color: #25d366; }
 .plan-card--soft small { color: var(--text-3); opacity: 1; }
 .sidebar-footer { border-top: 1px solid var(--line); padding: .8rem 1rem; display: flex; align-items: center; gap: .6rem; }
 .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .82rem; background: linear-gradient(135deg, var(--brand), var(--violet)); color: #fff; flex-shrink: 0; overflow: hidden; }

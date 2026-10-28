@@ -26,8 +26,15 @@
   // ── Init ─────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     loadChatList();
-    sendInit();
     bindEvents();
+    // chat.php?open=ID (from the dashboard) opens that document straight away.
+    const open = new URLSearchParams(location.search).get('open');
+    if (open) {
+      loadChat(open);
+      history.replaceState(null, '', location.pathname);
+    } else {
+      sendInit();
+    }
   });
 
   function post(url, body) {
@@ -154,6 +161,7 @@
       case 'buttons': appendButtonsBubble(msg); break;
       case 'file':    appendFileBubble(msg); break;
       case 'upload':  appendUploadBubble(msg.content); break;
+      case 'whatsapp': appendWhatsAppBubble(msg); break;
       default:        if (msg.content) appendTextBubble(msg.content);
     }
   }
@@ -202,6 +210,25 @@
         </div>
         <i class="fa-solid fa-download"></i>
       </a>`));
+  }
+
+  /** Opens the user's own WhatsApp with the message ready, and records that it was sent. */
+  function appendWhatsAppBubble(msg) {
+    const row = botRow(`
+      <a class="msg-file msg-wa" href="${escAttr(msg.url)}" target="_blank" rel="noopener">
+        <span class="msg-file-icon"><i class="fa-brands fa-whatsapp"></i></span>
+        <div>
+          <div class="msg-file-label">${escHtml(msg.label || 'Send on WhatsApp')}</div>
+          <div class="msg-file-sub">Opens WhatsApp with the message and PDF link ready</div>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+      </a>`);
+    row.querySelector('a').addEventListener('click', () => {
+      post('ajax/doc_event.php', { invoice_id: msg.invoice_id, kind: 'whatsapp' })
+        .then(() => { showToast('Marked as sent on WhatsApp'); loadChatList(); })
+        .catch(() => {});
+    });
+    messagesArea.appendChild(row);
   }
 
   function appendUploadBubble(text) {
@@ -330,6 +357,7 @@
           const msg = m.extra || { type: m.type, content: m.content };
           if (msg.type === 'buttons' && msg.buttons) appendButtonsBubble(msg);
           else if (msg.type === 'file' && msg.url) appendFileBubble(msg);
+          else if (msg.type === 'whatsapp' && msg.url) appendWhatsAppBubble(msg);
           else appendTextBubble(m.content);
         });
         // Old choices can't be re-sent from history.

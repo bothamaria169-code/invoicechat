@@ -10,17 +10,28 @@ $file = basename(str_replace('\\', '/', (string) ($_GET['f'] ?? '')));
 $sig  = (string) ($_GET['s'] ?? '');
 $path = PDF_DIR . $file;
 
-$allowed = $file !== '' && str_ends_with(strtolower($file), '.pdf') && is_file($path) && pdfSignatureValid($file, $sig);
+$signed  = $file !== '' && str_ends_with(strtolower($file), '.pdf') && is_file($path) && pdfSignatureValid($file, $sig);
+$allowed = $signed;
+$doc     = false;
+$viewer  = null;
 
-if (!$allowed && $file !== '' && is_file($path)) {
+if ($file !== '' && is_file($path)) {
+    $s = getDB()->prepare('SELECT id, user_id FROM invoices WHERE pdf_path LIKE ? LIMIT 1');
+    $s->execute(['%' . $file]);
+    $doc = $s->fetch();
     startAppSession();
-    $user = getCurrentUser();
-    if ($user) {
-        $s = getDB()->prepare('SELECT user_id FROM invoices WHERE pdf_path LIKE ? LIMIT 1');
-        $s->execute(['%' . $file]);
-        $owner = $s->fetchColumn();
-        $allowed = $user['role'] === 'admin' || ($owner !== false && (int) $owner === (int) $user['id']);
+    $viewer = isLoggedIn() ? getCurrentUser() : null;
+    if (!$allowed && $viewer) {
+        $allowed = $viewer['role'] === 'admin' || ($doc && (int) $doc['user_id'] === (int) $viewer['id']);
     }
+}
+
+// Someone other than the owner opened the signed link: the client saw it.
+// (Link preview bots are skipped so a WhatsApp preview doesn't count.)
+if ($allowed && $signed && $doc && (!$viewer || (int) $viewer['id'] !== (int) $doc['user_id'] && $viewer['role'] !== 'admin')
+    && !preg_match('/bot|crawler|spider|facebookexternalhit|whatsapp|preview|slack|telegram|skype/i', userAgent())) {
+    require_once __DIR__ . '/includes/documents.php';
+    logDocEvent((int) $doc['id'], (int) $doc['user_id'], 'viewed', substr(userAgent(), 0, 120));
 }
 
 if (!$allowed) {

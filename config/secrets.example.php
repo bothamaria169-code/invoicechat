@@ -22,6 +22,11 @@ return [
     'admin_email'         => 'admin@swiftfusion.co.za',
     'admin_seed_password' => 'CHANGE_ME',
 
+    // Locked out of admin? Set a new password here and load any page once.
+    // It's applied one time (and also makes the addresses below admins).
+    'admin_reset_password' => '',
+    'admin_reset_emails'   => [], // e.g. ['you@gmail.com']
+
     // Mailbox that sends sign-up, reset and invoice emails (cPanel → Email Accounts).
     // Leave smtp_pass blank to use the server's PHP mail() instead.
     'smtp_host' => 'mail.swiftfusion.co.za',
