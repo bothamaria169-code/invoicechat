@@ -5,6 +5,8 @@ require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/config/db.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/billing.php';
+require_once dirname(__DIR__) . '/includes/ai.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use InvoiceChat\BotEngine;
@@ -30,6 +32,17 @@ if ($invoiceId === null && $sessInv) $invoiceId = $sessInv;
 
 $userId = (int)$_SESSION['user_id'];
 $db     = getDB();
+
+// The open document may have been deleted (another tab, or by an admin): start fresh.
+if ($invoiceId !== null) {
+    $own = $db->prepare('SELECT 1 FROM invoices WHERE id = ? AND user_id = ?');
+    $own->execute([$invoiceId, $userId]);
+    if (!$own->fetchColumn()) {
+        $invoiceId = null;
+        $_SESSION['invoice_id'] = null;
+        if (!str_starts_with($state, 'onboard_') && !str_starts_with($state, 'settings_')) $state = 'idle';
+    }
+}
 $bot    = new BotEngine($db, $userId);
 
 // ── Handle special init call ──────────────────────────────────────
@@ -50,8 +63,19 @@ if ($input !== '') {
 
 // ── Process through bot ───────────────────────────────────────────
 try {
-    $messages = $bot->process($input, $state, $botData, $invoiceId);
+    // "Describe it" AI drafts: /ai <sentence>, or a sentence typed while idle.
+    if (preg_match('#^/ai\b#i', $input)) {
+        $text = trim(substr($input, 3));
+        $messages = $text === ''
+            ? [msg("Describe the invoice or quote in one message, e.g.\n\n*/ai Invoice Acme Ltd for 3 logo designs at R500 each and hosting R200, 15% VAT, due in 14 days*")]
+            : aiDraftInChat($userId, $text, $state, $botData, $invoiceId);
+    } elseif ($state === 'idle' && !str_starts_with($input, '/') && looksLikeDocumentRequest($input)) {
+        $messages = aiDraftInChat($userId, $input, $state, $botData, $invoiceId);
+    } else {
+        $messages = $bot->process($input, $state, $botData, $invoiceId);
+    }
     $messages = handleSpecialMessages($messages, $db, $userId, $invoiceId);
+    $usage    = usageBadge(freshUser($userId));
 } catch (\Throwable $e) {
     error_log('InvoiceChat BotEngine error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     jsonResponse([
@@ -68,7 +92,7 @@ $_SESSION['invoice_id'] = $invoiceId;
 // ── Save bot messages ─────────────────────────────────────────────
 saveBotMessages($db, $userId, $invoiceId, $messages);
 
-jsonResponse(['messages' => $messages, 'invoice_id' => $invoiceId]);
+jsonResponse(['messages' => $messages, 'invoice_id' => $invoiceId, 'usage' => $usage]);
 
 // ─────────────────────────────────────────────────────────────────
 
@@ -121,6 +145,17 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
         return [['type' => 'text', 'content' => "Cannot generate PDF: invoice or items missing."]];
     }
 
+    // Plans & credits: the first PDF of a document uses one from the monthly
+    // allowance or one credit; re-making it later is free.
+    $blocked = chargeDocument($userId, $invoiceId);
+    if ($blocked !== '') {
+        $GLOBALS['state'] = 'invoice_confirm'; // so "Generate PDF" works again after topping up
+        return [
+            ['type' => 'text', 'content' => $blocked],
+            ['type' => 'buttons', 'content' => 'Once your top-up is approved, tap below.', 'buttons' => ['Generate PDF']],
+        ];
+    }
+
     $tpl     = $invoice['template_name'] ?? 'classic';
     $tplFile = dirname(__DIR__) . "/templates/{$tpl}.php";
     if (!file_exists($tplFile)) $tplFile = dirname(__DIR__) . '/templates/classic.php';
@@ -128,6 +163,13 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
     ob_start();
     include $tplFile;
     $html = ob_get_clean();
+
+    // Free plan documents carry a small footer — it's also our best advert.
+    if (!isPro(freshUser($userId))) {
+        $footer = '<div style="position:fixed;bottom:-18px;left:0;right:0;text-align:center;font-family:DejaVu Sans,sans-serif;font-size:8px;color:#9aa3b2">'
+                . 'Created free with InvoiceChat · ' . e(preg_replace('#^https?://#', '', APP_URL)) . '</div>';
+        $html = stripos($html, '</body>') !== false ? str_ireplace('</body>', $footer . '</body>', $html) : $html . $footer;
+    }
 
     try {
         $options = new \Dompdf\Options();
@@ -166,6 +208,7 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
              'buttons' => $buttons],
         ];
     } catch (\Throwable $e) {
+        refundDocument($userId, $invoiceId);
         return [['type' => 'text', 'content' => "PDF generation failed: " . $e->getMessage()]];
     }
 }

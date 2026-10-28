@@ -4,8 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once BASE_DIR . '/classes/MetaPoster.php';
 require_once BASE_DIR . '/classes/TikTok.php';
+require_once BASE_DIR . '/classes/YouTube.php';
 
-const MARKETING_PLATFORMS = ['facebook' => 'Facebook Page', 'instagram' => 'Instagram', 'tiktok' => 'TikTok (draft)'];
+const MARKETING_PLATFORMS = ['facebook' => 'Facebook Page', 'instagram' => 'Instagram', 'tiktok' => 'TikTok (draft)', 'youtube' => 'YouTube Shorts'];
 
 /** Ready-made captions; {link} becomes the tracked sign-up link for the platform. */
 function captionTemplates(): array
@@ -35,7 +36,11 @@ function publishMarketingPost(array $post): array
     $file = $post['media_path'] ? MEDIA_DIR . basename($post['media_path']) : null;
     $kind = (string) $post['kind'];
 
-    if ($post['platform'] === 'tiktok') {
+    if ($post['platform'] === 'youtube') {
+        $r = $kind === 'video' && $file
+            ? YouTube::upload($file, (string) $post['caption'])
+            : ['ok' => false, 'id' => '', 'error' => 'YouTube needs a video (MP4).'];
+    } elseif ($post['platform'] === 'tiktok') {
         $r = $kind === 'video' && $file
             ? TikTok::uploadDraft($file)
             : ['ok' => false, 'id' => '', 'error' => 'TikTok needs a video (MP4).'];

@@ -17,6 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$target) {
         flash('error', 'That user no longer exists.');
+    } elseif ($action === 'credits') {
+        require_once BASE_DIR . '/includes/billing.php';
+        $n = (int) ($_POST['amount'] ?? 0);
+        $months = (int) ($_POST['months'] ?? 0);
+        if ($n !== 0) addCredits($id, $n, 'admin', trim((string) ($_POST['note'] ?? '')) ?: 'Adjusted by admin', (int) $me);
+        if ($months > 0) extendPro($id, $months, 'Given by admin', (int) $me);
+        if ($months < 0) $db->prepare("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE id = ?")->execute([$id]);
+        flash('success', 'Updated: ' . ($n ? ($n > 0 ? '+' : '') . $n . ' credits ' : '') . ($months > 0 ? "+{$months} month(s) Pro" : ($months < 0 ? 'moved to Free' : '')));
     } elseif ($action === 'send_reset') {
         $err = sendResetLink($target);
         flash($err === '' ? 'success' : 'error', $err === '' ? 'Password link sent to ' . $target['email'] . '.' : 'Email failed: ' . $err);
@@ -118,6 +126,13 @@ if (isset($_GET['id'])) {
       <section class="card">
         <div class="card__head"><h2>Actions</h2></div>
         <div class="card__body" style="display:grid;gap:.6rem">
+          <?php require_once BASE_DIR . '/includes/billing.php'; $use = usageFor($u); ?>
+          <div class="status-line <?= $use['pro'] ? 'ok' : 'off' ?>" style="margin:0"><span class="dot"></span><?= $use['plan'] ?><?= $use['pro'] ? ' until ' . date('j M Y', strtotime($use['expires'])) : '' ?> · <?= $use['left'] ?>/<?= $use['allowance'] ?> left this month · <?= $use['credits'] ?> credits</div>
+          <form method="POST" style="display:grid;grid-template-columns:1fr 1fr auto;gap:.4rem;align-items:end"><?= csrfField() ?><input type="hidden" name="user_id" value="<?= $u['id'] ?>"><input type="hidden" name="back" value="<?= e($back) ?>"><input type="hidden" name="action" value="credits">
+            <div class="field" style="margin:0"><label>Credits (+/−)</label><input type="number" name="amount" value="0"></div>
+            <div class="field" style="margin:0"><label>Pro</label><select name="months"><option value="0">No change</option><option value="1">+1 month</option><option value="3">+3 months</option><option value="12">+12 months</option><option value="-1">End Pro</option></select></div>
+            <button class="btn btn-ghost" style="padding:.7rem .9rem">Apply</button>
+          </form>
           <form method="POST"><?= csrfField() ?><input type="hidden" name="user_id" value="<?= $u['id'] ?>"><input type="hidden" name="back" value="<?= e($back) ?>"><input type="hidden" name="action" value="send_reset">
             <button class="btn btn-ghost btn-block"><i class="fa-solid fa-key"></i> Email a password <?= $u['password_hash'] ? 'reset' : 'set-up' ?> link</button></form>
           <a class="btn btn-ghost btn-block" href="mailto:<?= e($u['email']) ?>"><i class="fa-regular fa-envelope"></i> Email this user</a>

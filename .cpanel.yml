@@ -11,4 +11,6 @@ deployment:
     - /bin/cp -R admin ajax assets auth bot classes config database includes templates vendor $DEPLOYPATH
     - /bin/cp *.php .htaccess $DEPLOYPATH
     - /bin/mkdir -p ${DEPLOYPATH}pdfs ${DEPLOYPATH}uploads/logos ${DEPLOYPATH}uploads/marketing
+    - /bin/mkdir -p ${DEPLOYPATH}uploads/payments
     - /bin/cp uploads/.htaccess ${DEPLOYPATH}uploads/.htaccess
+    - /bin/cp uploads/payments/.htaccess ${DEPLOYPATH}uploads/payments/.htaccess

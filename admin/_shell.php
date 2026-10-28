@@ -23,15 +23,20 @@ function adminOpen(string $active, string $title, string $sub = '', string $acti
     $db = getDB();
     $newUsers = (int) $db->query('SELECT COUNT(*) FROM users WHERE created_at > (NOW() - INTERVAL 1 DAY)')->fetchColumn();
     $queued   = (int) $db->query("SELECT COUNT(*) FROM marketing_posts WHERE status = 'scheduled'")->fetchColumn();
+    $vouchers = (int) $db->query("SELECT COUNT(*) FROM payments WHERE status = 'pending'")->fetchColumn();
+    $toCall   = (int) $db->query("SELECT COUNT(*) FROM leads WHERE status = 'to_call' AND (call_after IS NULL OR call_after <= NOW())")->fetchColumn();
 
     $nav = [
         'Overview' => [
             ['dashboard', 'index.php',     'fa-gauge-high',   'Dashboard', 0],
             ['users',     'users.php',     'fa-users',        'Users',     $newUsers],
             ['documents', 'documents.php', 'fa-file-invoice', 'Invoices & quotes', 0],
+            ['payments',  'payments.php',  'fa-money-bill-wave', 'Payments', $vouchers],
         ],
         'Growth' => [
-            ['marketing', 'marketing.php', 'fa-bullhorn',     'Marketing', $queued],
+            ['leads',     'leads.php',     'fa-address-book', 'Leads & calls', $toCall],
+            ['campaigns', 'campaigns.php', 'fa-envelopes-bulk', 'Email campaigns', 0],
+            ['marketing', 'marketing.php', 'fa-bullhorn',     'Social & ads', $queued],
         ],
         'Setup' => [
             ['settings', 'settings.php', 'fa-sliders',   'Settings',   0],

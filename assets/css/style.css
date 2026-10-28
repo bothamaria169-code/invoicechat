@@ -306,6 +306,12 @@ body.app-body { height: 100vh; height: 100dvh; overflow: hidden; }
 .badge-accepted { background: var(--mint-50); color: var(--mint); }
 .badge-rejected { background: var(--coral-50); color: var(--coral); }
 
+.plan-card { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin: 0 .8rem .6rem; padding: .7rem .9rem; border-radius: var(--r); background: linear-gradient(135deg, var(--brand), var(--violet)); color: #fff; text-decoration: none !important; font-size: .82rem; }
+.plan-card strong { display: block; font-size: .88rem; }
+.plan-card small { opacity: .85; }
+.plan-card span { font-weight: 800; white-space: nowrap; }
+.plan-card--soft { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.plan-card--soft small { color: var(--text-3); opacity: 1; }
 .sidebar-footer { border-top: 1px solid var(--line); padding: .8rem 1rem; display: flex; align-items: center; gap: .6rem; }
 .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .82rem; background: linear-gradient(135deg, var(--brand), var(--violet)); color: #fff; flex-shrink: 0; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -398,3 +404,13 @@ body.app-body { height: 100vh; height: 100dvh; overflow: hidden; }
 .toast.show { transform: translate(-50%, 0); opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Pricing */
+.price { display: flex; flex-direction: column; }
+.price h3 { font-size: 1.2rem; }
+.price__amt { font-family: var(--font-display); font-size: 2.4rem; font-weight: 800; margin: .3rem 0 .1rem; }
+.price__amt small { font-size: .95rem; color: var(--text-3); font-weight: 600; }
+.price ul { list-style: none; margin: 1rem 0 1.4rem; display: grid; gap: .45rem; flex: 1; }
+.price li { font-size: .92rem; color: var(--text-2); padding-left: 1.5rem; position: relative; }
+.price li::before { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; position: absolute; left: 0; color: var(--mint); font-size: .8rem; top: .15rem; }
+.price--pro { border: 2px solid var(--brand); box-shadow: var(--e-brand); }

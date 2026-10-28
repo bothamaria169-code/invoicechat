@@ -186,6 +186,20 @@ function onNewSignup(array $user): void
             'Create my first invoice', APP_URL . '/chat.php')
     );
 
+    // Welcome credits, if the admin set any.
+    $gift = (int) get_setting('bill_signup_gift', '0');
+    if ($gift > 0) {
+        getDB()->prepare('UPDATE users SET credits = credits + ? WHERE id = ?')->execute([$gift, $user['id']]);
+        getDB()->prepare("INSERT INTO credit_ledger (user_id, delta, kind, note) VALUES (?, ?, 'gift', 'Welcome credits')")->execute([$user['id'], $gift]);
+    }
+
+    // A lead who signs up is marked as won, so nobody calls them as a cold lead again.
+    $lead = getDB()->prepare("UPDATE leads SET status = 'signed_up', user_id = ?, call_after = NULL WHERE email = ? AND status <> 'do_not_contact'");
+    $lead->execute([$user['id'], $user['email']]);
+    if ($lead->rowCount()) {
+        getDB()->prepare("INSERT INTO lead_activity (lead_id, kind, outcome, detail) SELECT id, 'system', 'signed_up', 'Created an InvoiceChat account' FROM leads WHERE email = ?")->execute([$user['email']]);
+    }
+
     $_SESSION['track_signup'] = trackServerEvent('CompleteRegistration', $user);
 }
 

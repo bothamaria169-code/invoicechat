@@ -25,3 +25,5 @@ free-stripe-quote-template.png
 invoice-template.jpg
 sample-invoice-format-1-791x1024.png
 template.webp
+uploads/payments/*
+!uploads/payments/.htaccess

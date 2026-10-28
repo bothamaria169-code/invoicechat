@@ -47,7 +47,16 @@
     messageInput.addEventListener('input', autoGrow);
 
     document.querySelectorAll('.quick-action-btn').forEach(btn => {
-      btn.addEventListener('click', () => sendMessage(btn.dataset.msg));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.fill) {
+          // "Describe it": start the message for them and let them type the rest.
+          messageInput.value = btn.dataset.fill;
+          messageInput.placeholder = 'e.g. Invoice Acme for 3 logos at R500 each, 15% VAT, due in 14 days';
+          messageInput.focus();
+          return;
+        }
+        sendMessage(btn.dataset.msg);
+      });
     });
 
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
@@ -116,6 +125,10 @@
         if (data.error) { appendBotMessage({ type: 'text', content: 'Error: ' + data.error }); return; }
         if (data.invoice_id) currentInvoiceId = data.invoice_id;
         (data.messages || []).forEach(m => appendBotMessage(m));
+        if (data.usage) {
+          const badge = document.getElementById('usageBadge');
+          if (badge) badge.textContent = data.usage.replace(/^\w+ · /, '').replace(' left', ' documents left').replace(' + ', ' · ');
+        }
         scrollBottom();
         loadChatList();
       })

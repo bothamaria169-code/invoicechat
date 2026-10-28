@@ -10,6 +10,7 @@ $connected = [
     'facebook'  => MetaPoster::connected('facebook'),
     'instagram' => MetaPoster::connected('instagram'),
     'tiktok'    => TikTok::connected(),
+    'youtube'   => YouTube::connected(),
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -114,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('admin/marketing.php?tab=connect');
     }
     if ($form === 'disconnect') {
-        ($_POST['which'] ?? '') === 'tiktok' ? TikTok::disconnect() : MetaPoster::disconnect();
+        match ($_POST['which'] ?? '') { 'tiktok' => TikTok::disconnect(), 'youtube' => YouTube::disconnect(), default => MetaPoster::disconnect() };
         flash('success', 'Disconnected.');
         redirect('admin/marketing.php?tab=connect');
     }
@@ -127,11 +128,11 @@ $events30 = (int) $db->query('SELECT COUNT(*) FROM marketing_events WHERE ok = 1
 $pixelsOn = (get_setting('meta_pixel_id') !== '') + (get_setting('tiktok_pixel_id') !== '') + (get_setting('ga4_id') !== '');
 $cronLast = get_setting('cron_last_run');
 
-adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram and TikTok, and measure which ads bring sign-ups.');
+adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram, TikTok and YouTube, and measure which ads bring sign-ups.');
 ?>
 <div class="kpis">
   <div class="kpi"><div class="kpi__ico"><i class="fa-solid fa-paper-plane"></i></div><div><div class="kpi__label">Posted (7 days)</div><div class="kpi__value"><?= $posted7 ?></div><div class="kpi__delta"><?= $queued ?> scheduled</div></div></div>
-  <div class="kpi kpi--violet"><div class="kpi__ico"><i class="fa-solid fa-plug"></i></div><div><div class="kpi__label">Channels connected</div><div class="kpi__value"><?= array_sum($connected) ?>/3</div><div class="kpi__delta">Facebook · Instagram · TikTok</div></div></div>
+  <div class="kpi kpi--violet"><div class="kpi__ico"><i class="fa-solid fa-plug"></i></div><div><div class="kpi__label">Channels connected</div><div class="kpi__value"><?= array_sum($connected) ?>/4</div><div class="kpi__delta">Facebook · Instagram · TikTok · YouTube</div></div></div>
   <div class="kpi kpi--mint"><div class="kpi__ico"><i class="fa-solid fa-crosshairs"></i></div><div><div class="kpi__label">Tracked sign-ups (30 d)</div><div class="kpi__value"><?= $tracked ?></div><div class="kpi__delta"><?= $events30 ?> server events delivered</div></div></div>
   <div class="kpi kpi--amber"><div class="kpi__ico"><i class="fa-solid fa-chart-simple"></i></div><div><div class="kpi__label">Pixels active</div><div class="kpi__value"><?= $pixelsOn ?>/3</div><div class="kpi__delta">Meta · TikTok · Google</div></div></div>
 </div>
@@ -156,7 +157,7 @@ adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram and TikTok, and
           <div class="chips">
             <?php foreach (MARKETING_PLATFORMS as $p => $label): ?>
               <label class="chip-check" title="<?= $connected[$p] ? '' : 'Not connected' ?>"><input type="checkbox" name="platforms[]" value="<?= $p ?>" <?= $connected[$p] ? 'checked' : 'disabled' ?>>
-                <i class="fa-brands fa-<?= $p === 'facebook' ? 'facebook' : ($p === 'instagram' ? 'instagram' : 'tiktok') ?>"></i> <?= e($label) ?></label>
+                <i class="fa-brands fa-<?= $p === 'facebook' ? 'facebook' : ($p === 'instagram' ? 'instagram' : ($p === 'youtube' ? 'youtube' : 'tiktok')) ?>"></i> <?= e($label) ?></label>
             <?php endforeach; ?>
           </div>
         </div>
@@ -168,7 +169,7 @@ adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram and TikTok, and
           <div class="hint">{link} becomes <?= e(trackedLink('facebook')) ?> (with the right utm_source per platform; Instagram says “link in bio”).</div>
         </div>
         <div class="form-grid">
-          <div class="field"><label>Photo or video</label><input type="file" name="media" accept="image/jpeg,image/png,video/mp4"><div class="hint">JPG/PNG for Facebook & Instagram (1080×1350 is ideal). MP4 for TikTok and Reels.</div></div>
+          <div class="field"><label>Photo or video</label><input type="file" name="media" accept="image/jpeg,image/png,video/mp4"><div class="hint">JPG/PNG for Facebook & Instagram (1080×1350 is ideal). MP4 (vertical, under 60 s) for TikTok, Reels and YouTube Shorts.</div></div>
           <div class="field"><label>Campaign tag</label><input name="campaign" value="organic" placeholder="e.g. launch-oct"></div>
         </div>
         <div class="field"><label>When</label>
@@ -335,6 +336,23 @@ adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram and TikTok, and
     </div>
   </section>
 </div>
+<section class="card">
+  <div class="card__head"><div><h2><i class="fa-brands fa-youtube" style="color:#ff0033"></i> YouTube Shorts</h2><p>Uploads vertical MP4s to your channel. Uses the Google client from Settings → Google sign-in.</p></div></div>
+  <div class="card__body">
+    <div class="status-line <?= $connected['youtube'] ? 'ok' : 'off' ?>"><span class="dot"></span><?= $connected['youtube'] ? 'Connected' . (get_setting('youtube_channel') ? ' · ' . e(get_setting('youtube_channel')) : '') : (YouTube::ready() ? 'Not connected' : 'Add the Google Client ID & secret in Settings → Google sign-in first') ?></div>
+    <div class="form-foot">
+      <?php if (YouTube::ready()): ?><a class="btn btn-primary" style="background:#ff0033" href="youtube-connect.php?start=1"><i class="fa-brands fa-youtube"></i> <?= $connected['youtube'] ? 'Reconnect' : 'Connect YouTube' ?></a><?php endif; ?>
+      <?php if ($connected['youtube']): ?><form method="POST" data-confirm="Disconnect YouTube?"><?= csrfField() ?><input type="hidden" name="form" value="disconnect"><input type="hidden" name="which" value="youtube"><button class="btn-xs danger">Disconnect</button></form><?php endif; ?>
+    </div>
+    <ol class="steps-list" style="margin-top:1rem">
+      <li>console.cloud.google.com → your InvoiceChat project → <strong>APIs & Services → Library</strong> → enable <strong>YouTube Data API v3</strong>.</li>
+      <li><strong>Data access</strong> (OAuth scopes) → add <code>youtube.upload</code> and <code>youtube.readonly</code>.</li>
+      <li><strong>Clients</strong> → your web client → add this <strong>Authorised redirect URI</strong>:</li>
+    </ol>
+    <div class="copy-box"><code><?= e(YouTube::redirectUri()) ?></code><button type="button" class="btn-xs" data-copy="<?= e(YouTube::redirectUri()) ?>"><i class="fa-regular fa-copy"></i></button></div>
+    <p class="hint">Sign in with the Google account that owns the YouTube channel. Google shows an “unverified app” warning for upload access until the app is verified — click <em>Advanced → Continue</em>; it's your own app.</p>
+  </div>
+</section>
 <section class="card">
   <div class="card__head"><div><h2><i class="fa-regular fa-clock"></i> Cron job (scheduled posts)</h2><p><?= $cronLast ? 'Last ran ' . timeAgo($cronLast) : 'Not running yet' ?></p></div></div>
   <div class="card__body">

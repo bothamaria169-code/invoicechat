@@ -66,7 +66,7 @@ class BotEngine
         $name  = $this->user['company_name'];
         return [
             $this->msg("Welcome back, *{$name}*! What would you like to do?"),
-            $this->buttons('Choose an action:', ['/new – Create invoice', '/quote – Create quote', '/settings – Update profile', '/help – Show commands']),
+            $this->buttons('Choose an action — or just describe it, e.g. *Invoice Acme for 3 logos at R500 each*:', ['/new – Create invoice', '/quote – Create quote', '/ai – ✨ Describe it', '/settings – Update profile']),
         ];
     }
 
@@ -279,7 +279,9 @@ class BotEngine
         }
         $state = 'onboard_logo';
         return [
-            $this->upload("Would you like to upload your company logo? It will appear on your invoices. Click the upload button or type *skip*."),
+            $this->upload("Would you like to upload your company logo? It will appear on your invoices. Click the upload button or type *skip*.
+
+No logo yet? Make one free in a minute: " . APP_URL . "/logo.php"),
         ];
     }
 
@@ -322,7 +324,7 @@ class BotEngine
     {
         return [
             $this->msg("I didn't understand that. Here's what you can do:"),
-            $this->buttons('Choose an action:', ['/new – Create invoice', '/quote – Create quote', '/settings – Update profile', '/help – Commands']),
+            $this->buttons('Choose an action:', ['/new – Create invoice', '/quote – Create quote', '/ai – ✨ Describe it', '/help – Commands']),
         ];
     }
 
@@ -877,6 +879,7 @@ class BotEngine
                 "*InvoiceChat Commands:*\n\n"
                 . "/new — Create a new invoice\n"
                 . "/quote — Create a new quote\n"
+                . "/ai — ✨ Describe an invoice in one sentence and I'll draft it\n"
                 . "/convert — Convert active quote to invoice\n"
                 . "/settings — Update profile & defaults\n"
                 . "/history — Browse past invoices & quotes (sidebar)\n"
@@ -884,6 +887,8 @@ class BotEngine
                 . "/accept — Mark current quote as accepted\n"
                 . "/cancel — Cancel current operation\n"
                 . "/help — Show this help\n\n"
+                . "*Plan & credits:* " . APP_URL . "/billing.php\n"
+                . "*Logo maker:* " . APP_URL . "/logo.php\n\n"
                 . "*During creation:*\n"
                 . "• Type values or press quick-reply buttons\n"
                 . "• Type *skip* to skip optional fields\n"

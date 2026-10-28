@@ -8,8 +8,12 @@ PHP 8.1+ · MySQL/MariaDB · no build step.
 | Landing page | `index.php` |
 | Sign in / sign up / reset password / Google | `login.php`, `register.php`, `forgot-password.php`, `reset-password.php`, `auth/google.php` |
 | Chat app | `chat.php`, `assets/js/chat.js`, `ajax/`, `bot/` |
-| Admin dashboard | `admin/` (Dashboard, Users, Invoices & quotes, Marketing, Settings, My account) |
-| Marketing | `admin/marketing.php`, `classes/MetaPoster.php`, `classes/TikTok.php`, `includes/tracking.php` |
+| Admin dashboard | `admin/` (Dashboard, Users, Invoices & quotes, Payments, Leads & calls, Email campaigns, Social & ads, Settings) |
+| Plans, credits & OTT payments | `includes/billing.php`, `billing.php`, `admin/payments.php` |
+| AI assistant & logo maker | `includes/ai.php` (Groq), `includes/logos.php`, `logo.php`, `ajax/logo.php` |
+| Lead CRM | `includes/leads.php`, `admin/leads.php`, `admin/campaigns.php`, `import-leads.php`, `unsubscribe.php` |
+| Social & ads | `admin/marketing.php`, `classes/MetaPoster.php`, `classes/TikTok.php`, `classes/YouTube.php`, `includes/tracking.php` |
+| Guides | **`docs/SETUP-GUIDE.md`** (every login/redirect URL, step by step) · **`docs/MARKETING-STRATEGY.md`** |
 | Database schema | `database/migrate.php` — runs itself on the first page load after a deploy |
 
 ## Deploy (cPanel + GitHub)
@@ -28,12 +32,17 @@ Afterwards, every change is: push to GitHub → cPanel **Update from Remote** �
 
 > cPanel normally prefixes MySQL usernames with the account name (e.g. `swiftfusionco_yourname`). If the site says it can't connect, check the exact username under **MySQL Databases** and fix `db_user` in `secrets.php`.
 
-## After deploying — switch things on (Admin → …)
+## After deploying — switch things on
+
+Follow **docs/SETUP-GUIDE.md**. In short (Admin → …):
 
 - **Settings → Email delivery:** mailbox password for `admin@swiftfusion.co.za` → **Send test email**. Without it the site uses PHP `mail()`, which often lands in spam.
 - **Settings → Google sign-in:** Client ID + secret from Google Cloud (steps and the exact redirect URI are on that page).
-- **Marketing → Pixels & ads tracking:** Meta Dataset ID + Conversions API token, TikTok Pixel code + Events API token, GA4 ID. Then **Send a test sign-up event**.
-- **Marketing → Connections:** Meta app (Facebook Page + Instagram) and TikTok sandbox app, then **Connect**.
+- **Social & ads → Pixels & ads tracking:** Meta Dataset ID + Conversions API token, TikTok Pixel code + Events API token, GA4 ID. Then **Send a test sign-up event**.
+- **Social & ads → Connections:** Meta app (Facebook Page + Instagram), TikTok sandbox app and YouTube, then **Connect**.
+- **Settings → AI assistant:** free Groq API key.
+- **Payments → Prices & plans:** Free 5 docs/month, Pro R50/month (100 docs), top-up R10 = 10 credits. Approve OTT vouchers under **Payments → To verify**.
+- **Leads & calls → Import:** your business lead lists.
 
 ## What happens on sign-up
 

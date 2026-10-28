@@ -20,6 +20,7 @@ pageHead(APP_NAME . ' — Send invoices & quotes from a chat', [
     <nav>
       <a href="#features" class="hide-sm">Features</a>
       <a href="#how" class="hide-sm">How it works</a>
+      <a href="#pricing" class="hide-sm">Pricing</a>
       <a href="login.php">Sign in</a>
       <a href="register.php" class="btn btn-primary">Start free</a>
     </nav>
@@ -29,7 +30,7 @@ pageHead(APP_NAME . ' — Send invoices & quotes from a chat', [
 <section class="hero">
   <div class="wrap">
     <div>
-      <span class="eyebrow"><i class="fa-solid fa-bolt"></i> Built for SA freelancers & small businesses</span>
+      <span class="eyebrow"><i class="fa-solid fa-bolt"></i> Built for every South African business</span>
       <h1>Invoices & quotes,<br><span>sent in a chat.</span></h1>
       <p class="lead">No spreadsheets, no templates to fight with. Answer a few questions and <?= APP_NAME ?> builds a branded PDF and sends it by email or WhatsApp.</p>
       <div class="hero__cta">
@@ -89,6 +90,31 @@ pageHead(APP_NAME . ' — Send invoices & quotes from a chat', [
       <div class="step"><h3>Create your free account</h3><p>Sign up with email or Google. Tell the assistant your business name, contact and bank details once.</p></div>
       <div class="step"><h3>Chat your invoice</h3><p>Type <strong>/new</strong> and answer: client, items, quantities, prices. Pick a template.</p></div>
       <div class="step"><h3>Send & get paid</h3><p>Download the PDF or send it by email or WhatsApp. Mark it paid when the money lands.</p></div>
+    </div>
+  </div>
+</section>
+
+<?php require_once __DIR__ . '/includes/billing.php'; $bc = billingConfig(); ?>
+<section class="section" id="pricing" style="padding-top:0">
+  <div class="wrap">
+    <div class="section__head"><h2>Simple pricing for every business</h2><p>Plumbers, salons, caterers, shops, consultants, builders — if you send invoices or quotes, this is for you. Pay with an OTT voucher from any shop; no card needed.</p></div>
+    <div class="grid-3 pricing">
+      <div class="feature price">
+        <h3>Free</h3><div class="price__amt">R0</div><p>For getting started</p>
+        <ul><li><?= $bc['free_docs'] ?> invoices or quotes a month</li><li>Your logo & bank details</li><li>Send by WhatsApp & email</li><li>Free logo maker</li></ul>
+        <a href="register.php" class="btn btn-ghost btn-block">Start free</a>
+      </div>
+      <div class="feature price price--pro">
+        <span class="eyebrow" style="margin:0 0 .6rem">Most popular</span>
+        <h3>Pro</h3><div class="price__amt">R<?= $bc['pro_price'] ?><small>/month</small></div><p>For busy businesses</p>
+        <ul><li><?= $bc['pro_docs'] ?> invoices or quotes a month</li><li>No “Created with InvoiceChat” footer</li><li>✨ AI drafts from one sentence</li><li>All 5 templates & logo maker</li></ul>
+        <a href="register.php?utm_source=site&utm_campaign=pro" class="btn btn-primary btn-block">Go Pro</a>
+      </div>
+      <div class="feature price">
+        <h3>Top-ups</h3><div class="price__amt">R<?= $bc['pack_price'] ?><small>/<?= $bc['pack_size'] ?> docs</small></div><p>Only pay for what you use</p>
+        <ul><li><?= $bc['pack_size'] ?> extra invoices or quotes</li><li>Credits never expire</li><li>Works on Free or Pro</li><li>Buy with an OTT voucher</li></ul>
+        <a href="register.php" class="btn btn-ghost btn-block">Get started</a>
+      </div>
     </div>
   </div>
 </section>

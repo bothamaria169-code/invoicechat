@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_shell.php';
 require_once BASE_DIR . '/classes/GoogleAuth.php';
 
-$tab = in_array($_GET['tab'] ?? '', ['general', 'email', 'google'], true) ? $_GET['tab'] : 'general';
+$tab = in_array($_GET['tab'] ?? '', ['general', 'email', 'google', 'ai'], true) ? $_GET['tab'] : 'general';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = (string) ($_POST['form'] ?? '');
@@ -26,6 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($form === 'email_test') {
         $err = sendMail($ADMIN['email'], 'Test email from ' . APP_NAME, emailLayout('It works!', '<p>Your ' . APP_NAME . ' email settings are working. Sign-up copies, password resets and invoices will be delivered.</p>'));
         flash($err === '' ? 'success' : 'error', $err === '' ? 'Test email sent to ' . $ADMIN['email'] . '. Check the inbox (and spam).' : 'Sending failed: ' . $err);
+    } elseif ($form === 'ai') {
+        set_setting('ai_enabled', empty($_POST['ai_enabled']) ? '0' : '1');
+        set_setting('groq_model', trim((string) ($_POST['groq_model'] ?? '')));
+        save_secret_setting('groq_api_key', (string) ($_POST['groq_api_key'] ?? ''));
+        flash('success', 'AI settings saved.');
+    } elseif ($form === 'ai_test') {
+        require_once BASE_DIR . '/includes/ai.php';
+        $r = groqJson('Answer with JSON {"ok":true,"reply":"..."}', 'Say hello to an invoicing app admin in 5 words.', 60);
+        flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'Groq answered: ' . ($r['data']['reply'] ?? 'ok') : 'Groq said: ' . $r['error']);
     } elseif ($form === 'google') {
         set_setting('google_login_enabled', empty($_POST['google_login_enabled']) ? '0' : '1');
         set_setting('google_client_id', trim((string) ($_POST['google_client_id'] ?? '')));
@@ -44,7 +53,40 @@ adminOpen('settings', 'Settings', 'Email delivery, Google sign-in and notificati
   <a href="?tab=general" class="<?= $tab === 'general' ? 'is-on' : '' ?>"><i class="fa-solid fa-bell"></i> Notifications</a>
   <a href="?tab=email" class="<?= $tab === 'email' ? 'is-on' : '' ?>"><i class="fa-regular fa-envelope"></i> Email delivery</a>
   <a href="?tab=google" class="<?= $tab === 'google' ? 'is-on' : '' ?>"><i class="fa-brands fa-google"></i> Google sign-in</a>
+  <a href="?tab=ai" class="<?= $tab === 'ai' ? 'is-on' : '' ?>"><i class="fa-solid fa-wand-magic-sparkles"></i> AI assistant</a>
 </nav>
+
+<?php if ($tab === 'ai'): $aiKey = get_setting('groq_api_key', (string) secret('groq_api_key', '')); ?>
+<div class="grid-2">
+  <section class="card">
+    <div class="card__head"><div><h2>AI assistant (Groq — free)</h2><p>Drafts invoices from one sentence and suggests logo ideas.</p></div></div>
+    <div class="card__body">
+      <div class="status-line <?= $aiKey !== '' && get_setting('ai_enabled', '1') === '1' ? 'ok' : 'off' ?>"><span class="dot"></span><?= $aiKey !== '' ? (get_setting('ai_enabled', '1') === '1' ? 'On' : 'Key saved, switched off') : 'Off — add a Groq API key' ?></div>
+      <form method="POST"><?= csrfField() ?><input type="hidden" name="form" value="ai">
+        <div class="field"><label>Groq API key</label><input type="password" name="groq_api_key" value="<?= e(masked($aiKey)) ?>" autocomplete="new-password" placeholder="gsk_…"></div>
+        <div class="field"><label>Model</label><select name="groq_model">
+          <?php foreach (['llama-3.3-70b-versatile' => 'Llama 3.3 70B — best quality (recommended)', 'llama-3.1-8b-instant' => 'Llama 3.1 8B — fastest, highest free limits'] as $m => $l): ?>
+            <option value="<?= $m ?>" <?= get_setting('groq_model', 'llama-3.3-70b-versatile') === $m ? 'selected' : '' ?>><?= $l ?></option>
+          <?php endforeach; ?></select></div>
+        <label class="check"><input type="checkbox" name="ai_enabled" value="1" <?= get_setting('ai_enabled', '1') === '1' ? 'checked' : '' ?>> Let users use the AI assistant</label>
+        <div class="form-foot"><button class="btn btn-primary">Save</button></div>
+      </form>
+      <form method="POST" style="margin-top:.6rem"><?= csrfField() ?><input type="hidden" name="form" value="ai_test"><button class="btn btn-ghost"><i class="fa-solid fa-vial"></i> Test the key</button></form>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card__head"><h2>Get a free key (2 minutes)</h2></div>
+    <div class="card__body">
+      <ol class="steps-list">
+        <li>Go to <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> and sign up free (Google sign-in works).</li>
+        <li><strong>API Keys → Create API Key</strong> → name it <em>InvoiceChat</em> → copy it (starts with <code>gsk_</code>). It's only shown once.</li>
+        <li>Paste it here → Save → <strong>Test the key</strong>.</li>
+      </ol>
+      <p class="hint">The free tier allows roughly 1,000 requests a day on Llama 3.3 70B (14,000 on 8B), which is plenty to start. Per-user monthly limits are in <a href="payments.php?tab=pricing">Payments → Prices & plans</a>. Logo images come from Pollinations, which is free and needs no key.</p>
+    </div>
+  </section>
+</div>
+<?php endif; ?>
 
 <?php if ($tab === 'general'): ?>
 <section class="card" style="max-width:760px">

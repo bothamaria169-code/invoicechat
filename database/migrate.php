@@ -7,7 +7,7 @@ declare(strict_types=1);
  * the version reached. Works on MySQL and MariaDB (columns are checked in
  * information_schema rather than with MariaDB-only "ADD COLUMN IF NOT EXISTS").
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function runMigrations(PDO $db): void
 {
@@ -27,6 +27,7 @@ function runMigrations(PDO $db): void
     try {
         if ($v < 1) migrationV1($db);
         if ($v < 2) migrationV2($db);
+        if ($v < 3) migrationV3($db);
         $db->prepare("REPLACE INTO app_settings (k, v) VALUES ('schema_version', ?)")->execute([(string) SCHEMA_VERSION]);
     } finally {
         $db->query("SELECT RELEASE_LOCK('invoicechat_migrate')");
@@ -208,6 +209,130 @@ function migrationV2(PDO $db): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     seedAdmin($db);
+}
+
+/** Plans & credits, OTT voucher payments, AI usage, and the lead CRM. */
+function migrationV3(PDO $db): void
+{
+    addColumn($db, 'users', 'plan', "VARCHAR(10) NOT NULL DEFAULT 'free'");
+    addColumn($db, 'users', 'plan_expires_at', 'DATETIME NULL');
+    addColumn($db, 'users', 'credits', 'INT NOT NULL DEFAULT 0');
+    addColumn($db, 'invoices', 'charged_at', 'DATETIME NULL');
+    addColumn($db, 'invoices', 'charge_source', 'VARCHAR(10) NULL');
+    if (!indexExists($db, 'invoices', 'idx_user_charged')) {
+        $db->exec('ALTER TABLE invoices ADD INDEX idx_user_charged (user_id, charged_at)');
+    }
+
+    $db->exec("CREATE TABLE IF NOT EXISTS credit_ledger (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        user_id     INT NOT NULL,
+        delta       INT NOT NULL,
+        kind        VARCHAR(20) NOT NULL,
+        note        VARCHAR(255) NULL,
+        created_by  INT NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user (user_id, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS payments (
+        id             INT PRIMARY KEY AUTO_INCREMENT,
+        user_id        INT NOT NULL,
+        package        VARCHAR(20) NOT NULL,
+        amount         DECIMAL(10,2) NOT NULL,
+        method         VARCHAR(20) NOT NULL DEFAULT 'ott',
+        voucher_pin    VARCHAR(32) NULL,
+        voucher_amount DECIMAL(10,2) NULL,
+        proof_path     VARCHAR(255) NULL,
+        status         VARCHAR(12) NOT NULL DEFAULT 'pending',
+        admin_note     VARCHAR(500) NULL,
+        reviewed_by    INT NULL,
+        reviewed_at    DATETIME NULL,
+        created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_pin (voucher_pin),
+        INDEX idx_status (status, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS ai_requests (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        user_id     INT NOT NULL,
+        kind        VARCHAR(20) NOT NULL,
+        ok          TINYINT(1) NOT NULL DEFAULT 1,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_time (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS leads (
+        id              INT PRIMARY KEY AUTO_INCREMENT,
+        email           VARCHAR(190) NULL,
+        first_name      VARCHAR(100) NULL,
+        last_name       VARCHAR(100) NULL,
+        business        VARCHAR(190) NULL,
+        job_title       VARCHAR(120) NULL,
+        phone           VARCHAR(20) NULL,
+        industry        VARCHAR(150) NULL,
+        town            VARCHAR(100) NULL,
+        province        VARCHAR(60) NULL,
+        website         VARCHAR(190) NULL,
+        source          VARCHAR(120) NOT NULL DEFAULT 'manual',
+        status          VARCHAR(20) NOT NULL DEFAULT 'new',
+        call_after      DATETIME NULL,
+        attempts        INT NOT NULL DEFAULT 0,
+        last_called_at  DATETIME NULL,
+        emails_sent     INT NOT NULL DEFAULT 0,
+        last_emailed_at DATETIME NULL,
+        whatsapp_at     DATETIME NULL,
+        notes           TEXT NULL,
+        user_id         INT NULL,
+        token           CHAR(32) NOT NULL,
+        created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_email (email),
+        UNIQUE KEY uq_token (token),
+        INDEX idx_status (status, call_after),
+        INDEX idx_phone (phone),
+        INDEX idx_source (source)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS lead_activity (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        lead_id     INT NOT NULL,
+        kind        VARCHAR(20) NOT NULL,
+        outcome     VARCHAR(30) NULL,
+        detail      VARCHAR(1000) NULL,
+        admin_id    INT NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_lead (lead_id, created_at),
+        INDEX idx_time (created_at),
+        FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS email_campaigns (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        name        VARCHAR(150) NOT NULL,
+        subject     VARCHAR(200) NOT NULL,
+        body        TEXT NOT NULL,
+        filters     TEXT NULL,
+        status      VARCHAR(12) NOT NULL DEFAULT 'sending',
+        total       INT NOT NULL DEFAULT 0,
+        sent        INT NOT NULL DEFAULT 0,
+        failed      INT NOT NULL DEFAULT 0,
+        created_by  INT NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS campaign_queue (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        campaign_id INT NOT NULL,
+        lead_id     INT NOT NULL,
+        status      VARCHAR(10) NOT NULL DEFAULT 'queued',
+        error       VARCHAR(300) NULL,
+        sent_at     DATETIME NULL,
+        UNIQUE KEY uq_pair (campaign_id, lead_id),
+        INDEX idx_status (status, id),
+        FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE,
+        FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 /** The admin@ account: created if missing, and always kept an active admin. */

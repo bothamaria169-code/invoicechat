@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/billing.php';
 require_once __DIR__ . '/includes/layout.php';
 
 startAppSession();
@@ -44,6 +44,13 @@ pageHead(APP_NAME);
     </div>
 
     <div class="chat-list" id="chatList"></div>
+
+    <?php $use = usageFor($user); ?>
+    <a class="plan-card" href="billing.php">
+      <div><strong><?= $use['plan'] ?> plan</strong><small id="usageBadge"><?= $use['left'] ?>/<?= $use['allowance'] ?> documents left · <?= $use['credits'] ?> credits</small></div>
+      <span><?= $use['pro'] ? 'Top up' : 'Upgrade' ?> <i class="fa-solid fa-arrow-right"></i></span>
+    </a>
+    <a class="plan-card plan-card--soft" href="logo.php"><div><strong><i class="fa-solid fa-palette"></i> Logo maker</strong><small>Make a logo from your initials</small></div><span><i class="fa-solid fa-arrow-right"></i></span></a>
 
     <div class="sidebar-footer">
       <div class="avatar"><?php if (!empty($user['avatar_url'])): ?><img src="<?= e($user['avatar_url']) ?>" alt="" referrerpolicy="no-referrer"><?php else: ?><?= e($initials) ?><?php endif; ?></div>
@@ -89,6 +96,7 @@ pageHead(APP_NAME);
         <div class="quick-actions">
           <button class="quick-action-btn" data-msg="/new"><i class="fa-solid fa-file-invoice"></i> New invoice</button>
           <button class="quick-action-btn" data-msg="/quote"><i class="fa-solid fa-file-signature"></i> New quote</button>
+          <button class="quick-action-btn" data-fill="/ai "><i class="fa-solid fa-wand-magic-sparkles"></i> Describe it</button>
           <button class="quick-action-btn" data-msg="/history"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
           <button class="quick-action-btn" data-msg="/settings"><i class="fa-solid fa-sliders"></i> Business profile</button>
           <button class="quick-action-btn" data-msg="/help"><i class="fa-regular fa-circle-question"></i> Help</button>
