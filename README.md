@@ -15,13 +15,13 @@ PHP 8.1+ · MySQL/MariaDB · no build step.
 ## Deploy (cPanel + GitHub)
 
 1. **🟧 cPanel → Git™ Version Control → Create** → Clone URL `https://github.com/bothamaria169-code/invoicechat.git`, repository path `/home/swiftfusionco/repositories/invoicechat`.
-2. Check the folder in `.cpanel.yml` (`/home/swiftfusionco/public_html/invoicechat/`) is where the site lives. Edit it if not.
+2. The site is the subdomain **invoicechat.swiftfusion.co.za**, whose document root is `/home/swiftfusionco/invoicechat.swiftfusion.co.za/`. `.cpanel.yml` copies the files there on every deploy. The repository path in step 1 must be a *different* folder (the clone is a staging copy, not the live site).
 3. **Manage → Pull or Deploy → Update from Remote → Deploy HEAD Commit.**
-4. **First time only:** with File Manager, upload `config/secrets.php` (copy `config/secrets.example.php` and fill it in). It holds the database password, the admin seed password and the mailbox password, and is never in git.
+4. **First time only:** with File Manager, upload `config/secrets.php` to `/home/swiftfusionco/invoicechat.swiftfusion.co.za/config/` (copy `config/secrets.example.php` and fill it in). It holds the database password, the admin seed password and the mailbox password, and is never in git.
 5. Open the site once. Missing tables and columns are created automatically, and the admin account `admin@swiftfusion.co.za` is created from `admin_seed_password` if it doesn't exist.
 6. **cPanel → Cron Jobs** → every 5 minutes:
    ```bash
-   /usr/local/bin/php /home/swiftfusionco/public_html/invoicechat/cron.php >/dev/null 2>&1
+   /usr/local/bin/php /home/swiftfusionco/invoicechat.swiftfusion.co.za/cron.php >/dev/null 2>&1
    ```
 
 Afterwards, every change is: push to GitHub → cPanel **Update from Remote** → **Deploy HEAD Commit**.

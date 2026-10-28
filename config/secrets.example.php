@@ -15,7 +15,7 @@ return [
     'local_db_pass' => '',
 
     // Public address of the live app, no trailing slash
-    'app_url' => 'https://swiftfusion.co.za/invoicechat',
+    'app_url' => 'https://invoicechat.swiftfusion.co.za',
 
     // Admin account: created on first page load if it doesn't exist yet.
     // Every sign-up is also copied to this address.

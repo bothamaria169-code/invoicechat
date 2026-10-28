@@ -5,9 +5,9 @@ declare(strict_types=1);
  * Scheduled jobs: publishes due marketing posts and tidies old security rows.
  *
  * cPanel → Cron Jobs, every 5 minutes:
- *   /usr/local/bin/php /home/swiftfusionco/public_html/invoicechat/cron.php >/dev/null 2>&1
+ *   /usr/local/bin/php /home/swiftfusionco/invoicechat.swiftfusion.co.za/cron.php >/dev/null 2>&1
  * or, from a URL cron service:
- *   https://swiftfusion.co.za/invoicechat/cron.php?key=CRON_KEY
+ *   https://invoicechat.swiftfusion.co.za/cron.php?key=CRON_KEY
  */
 require_once __DIR__ . '/includes/marketing.php';
 

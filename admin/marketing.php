@@ -340,7 +340,7 @@ adminOpen('marketing', 'Marketing', 'Post to Facebook, Instagram and TikTok, and
   <div class="card__body">
     <p class="hint" style="margin:0 0 .5rem">cPanel → Cron Jobs → <strong>Once Per Five Minutes</strong>, command:</p>
     <div class="copy-box"><code>/usr/local/bin/php <?= e(str_replace('\\', '/', BASE_DIR)) ?>/cron.php &gt;/dev/null 2&gt;&amp;1</code></div>
-    <p class="hint">On the server the path is usually <code>/home/swiftfusionco/public_html/invoicechat/cron.php</code>.</p>
+    <p class="hint">On the server the path is usually <code>/home/swiftfusionco/invoicechat.swiftfusion.co.za/cron.php</code>.</p>
   </div>
 </section>
 <?php endif; ?>
