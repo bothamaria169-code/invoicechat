@@ -1,0 +1,27 @@
+# ── Never in GitHub ──────────────────────────────────────────────
+config/secrets.php
+DB_NAME*.txt
+ADMIN*.txt
+*.env
+.env*
+
+# Generated and uploaded files live on the server, not in git
+pdfs/*
+!pdfs/.gitkeep
+uploads/logos/*
+!uploads/logos/.gitkeep
+uploads/marketing/*
+!uploads/marketing/.gitkeep
+
+# Tooling, archives and design references
+.claude/
+composer.phar
+*.zip
+*.log
+error_log
+.DS_Store
+Thumbs.db
+free-stripe-quote-template.png
+invoice-template.jpg
+sample-invoice-format-1-791x1024.png
+template.webp

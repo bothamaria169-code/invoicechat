@@ -1,0 +1,14 @@
+# cPanel → Git™ Version Control → Manage → "Deploy HEAD Commit" runs these steps.
+# The repository is cloned to /home/USER/repositories/invoicechat and copied into
+# the live folder. config/secrets.php, pdfs/ and uploads/ are never touched,
+# because they are not in the repository — upload secrets.php once with File Manager.
+#
+# If your cPanel username or the live folder differ, change the next line.
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/swiftfusionco/public_html/invoicechat/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/cp -R admin ajax assets auth bot classes config database includes templates vendor $DEPLOYPATH
+    - /bin/cp *.php .htaccess $DEPLOYPATH
+    - /bin/mkdir -p ${DEPLOYPATH}pdfs ${DEPLOYPATH}uploads/logos ${DEPLOYPATH}uploads/marketing
+    - /bin/cp uploads/.htaccess ${DEPLOYPATH}uploads/.htaccess
