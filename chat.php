@@ -98,12 +98,14 @@ pageHead(APP_NAME);
           <button class="quick-action-btn" data-msg="/new"><i class="fa-solid fa-file-invoice"></i> New invoice</button>
           <button class="quick-action-btn" data-msg="/quote"><i class="fa-solid fa-file-signature"></i> New quote</button>
           <button class="quick-action-btn" data-fill="/ai "><i class="fa-solid fa-wand-magic-sparkles"></i> Describe it</button>
+          <button class="quick-action-btn" data-photo><i class="fa-solid fa-camera"></i> Scan a photo</button>
           <button class="quick-action-btn" data-msg="/history"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
           <button class="quick-action-btn" data-msg="/settings"><i class="fa-solid fa-sliders"></i> Business profile</button>
           <button class="quick-action-btn" data-msg="/help"><i class="fa-regular fa-circle-question"></i> Help</button>
           <button class="quick-action-btn" data-msg="/cancel"><i class="fa-solid fa-xmark"></i> Cancel</button>
         </div>
         <div class="input-bar">
+          <label id="photoBtn" title="Send a photo of an invoice, quote or note" aria-label="Send a photo"><i class="fa-solid fa-camera"></i><input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,application/pdf" hidden></label>
           <textarea id="messageInput" rows="1" placeholder="Type a message or / for commands…" autocomplete="off" maxlength="2000" aria-label="Message"></textarea>
           <button id="sendBtn" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
         </div>

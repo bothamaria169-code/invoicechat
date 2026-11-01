@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_shell.php';
 require_once BASE_DIR . '/classes/GoogleAuth.php';
+require_once BASE_DIR . '/includes/ai.php';
 
 $tab = in_array($_GET['tab'] ?? '', ['general', 'email', 'google', 'ai'], true) ? $_GET['tab'] : 'general';
 
@@ -29,10 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($form === 'ai') {
         set_setting('ai_enabled', empty($_POST['ai_enabled']) ? '0' : '1');
         set_setting('groq_model', trim((string) ($_POST['groq_model'] ?? '')));
+        set_setting('groq_vision_model', trim((string) ($_POST['groq_vision_model'] ?? '')));
         save_secret_setting('groq_api_key', (string) ($_POST['groq_api_key'] ?? ''));
         flash('success', 'AI settings saved.');
     } elseif ($form === 'ai_test') {
-        require_once BASE_DIR . '/includes/ai.php';
         $r = groqJson('Answer with JSON {"ok":true,"reply":"..."}', 'Say hello to an invoicing app admin in 5 words.', 60);
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'Groq answered: ' . ($r['data']['reply'] ?? 'ok') : 'Groq said: ' . $r['error']);
     } elseif ($form === 'google') {
@@ -59,7 +60,7 @@ adminOpen('settings', 'Settings', 'Email delivery, Google sign-in and notificati
 <?php if ($tab === 'ai'): $aiKey = get_setting('groq_api_key', (string) secret('groq_api_key', '')); ?>
 <div class="grid-2">
   <section class="card">
-    <div class="card__head"><div><h2>AI assistant (Groq — free)</h2><p>Drafts invoices from one sentence and suggests logo ideas.</p></div></div>
+    <div class="card__head"><div><h2>AI assistant (Groq — free)</h2><p>Drafts invoices from one sentence or a photo, and suggests logo ideas.</p></div></div>
     <div class="card__body">
       <div class="status-line <?= $aiKey !== '' && get_setting('ai_enabled', '1') === '1' ? 'ok' : 'off' ?>"><span class="dot"></span><?= $aiKey !== '' ? (get_setting('ai_enabled', '1') === '1' ? 'On' : 'Key saved, switched off') : 'Off — add a Groq API key' ?></div>
       <form method="POST"><?= csrfField() ?><input type="hidden" name="form" value="ai">
@@ -68,6 +69,7 @@ adminOpen('settings', 'Settings', 'Email delivery, Google sign-in and notificati
           <?php foreach (['llama-3.3-70b-versatile' => 'Llama 3.3 70B — best quality (recommended)', 'llama-3.1-8b-instant' => 'Llama 3.1 8B — fastest, highest free limits'] as $m => $l): ?>
             <option value="<?= $m ?>" <?= get_setting('groq_model', 'llama-3.3-70b-versatile') === $m ? 'selected' : '' ?>><?= $l ?></option>
           <?php endforeach; ?></select></div>
+        <div class="field"><label>Photo reading model</label><input name="groq_vision_model" value="<?= e(get_setting('groq_vision_model')) ?>" placeholder="<?= e(DEFAULT_VISION_MODEL) ?>"><div class="hint">Leave blank for the default. Only change it if Groq retires this model — see console.groq.com/docs/vision.</div></div>
         <label class="check"><input type="checkbox" name="ai_enabled" value="1" <?= get_setting('ai_enabled', '1') === '1' ? 'checked' : '' ?>> Let users use the AI assistant</label>
         <div class="form-foot"><button class="btn btn-primary">Save</button></div>
       </form>
@@ -83,6 +85,7 @@ adminOpen('settings', 'Settings', 'Email delivery, Google sign-in and notificati
         <li>Paste it here → Save → <strong>Test the key</strong>.</li>
       </ol>
       <p class="hint">The free tier allows roughly 1,000 requests a day on Llama 3.3 70B (14,000 on 8B), which is plenty to start. Per-user monthly limits are in <a href="payments.php?tab=pricing">Payments → Prices & plans</a>. Logo images come from Pollinations, which is free and needs no key.</p>
+      <p class="hint">Photos of invoices are read with the same key (Llama 4 Scout, also free). Photos are sent to Groq to be read and are not stored by InvoiceChat.</p>
     </div>
   </section>
 </div>

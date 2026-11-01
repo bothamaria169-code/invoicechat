@@ -19,6 +19,7 @@
   const headerActions  = document.getElementById('headerActions');
   const typingEl       = document.getElementById('typingIndicator');
   const logoInput      = document.getElementById('logoFileInput');
+  const photoInput     = document.getElementById('photoInput');
   const sidebar        = document.getElementById('sidebar');
   const backdrop       = document.getElementById('sidebarBackdrop');
   const csrf           = (window.IC || {}).csrf || '';
@@ -55,6 +56,7 @@
 
     document.querySelectorAll('.quick-action-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if ('photo' in btn.dataset) { if (!isWaiting) photoInput.click(); return; }
         if (btn.dataset.fill) {
           // "Describe it": start the message for them and let them type the rest.
           messageInput.value = btn.dataset.fill;
@@ -68,6 +70,7 @@
 
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
     if (logoInput) logoInput.addEventListener('change', handleLogoUpload);
+    if (photoInput) photoInput.addEventListener('change', handlePhoto);
 
     // Search + filter tabs
     document.getElementById('sidebarSearch').addEventListener('input', () => renderChatList());
@@ -127,23 +130,66 @@
     setWaiting(true);
 
     post('ajax/send_message.php', { message: text, invoice_id: currentInvoiceId })
-      .then(data => {
-        setWaiting(false);
-        if (data.error) { appendBotMessage({ type: 'text', content: 'Error: ' + data.error }); return; }
-        if (data.invoice_id) currentInvoiceId = data.invoice_id;
-        (data.messages || []).forEach(m => appendBotMessage(m));
-        if (data.usage) {
-          const badge = document.getElementById('usageBadge');
-          if (badge) badge.textContent = data.usage.replace(/^\w+ · /, '').replace(' left', ' documents left').replace(' + ', ' · ');
-        }
-        scrollBottom();
-        loadChatList();
-      })
-      .catch(err => {
-        setWaiting(false);
-        appendBotMessage({ type: 'text', content: 'Connection problem. Check your internet and try again.' });
-        console.error(err);
-      });
+      .then(handleReply)
+      .catch(handleConnectionError);
+  }
+
+  // ── Photo of an invoice / quote / note: the AI reads it into a draft ──
+  // Whatever is typed in the box goes along as a caption ("make it a quote for Sipho").
+  function handlePhoto(e) {
+    const file = e.target.files[0];
+    photoInput.value = '';
+    if (!file || isWaiting) return;
+    const caption = messageInput.value.trim();
+    messageInput.value = '';
+    autoGrow();
+
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.alt = 'Photo you sent';
+      img.className = 'msg-photo';
+      bubble.appendChild(img);
+    } else {
+      bubble.textContent = '📄 ' + file.name;
+    }
+    if (caption) { const c = document.createElement('div'); c.innerHTML = formatText(caption); bubble.appendChild(c); }
+    row.appendChild(bubble);
+    messagesArea.appendChild(row);
+    setWaiting(true);
+    showToast('Reading your photo… this can take up to 30 seconds');
+
+    const fd = new FormData();
+    fd.append('photo', file);
+    fd.append('message', caption);
+    if (currentInvoiceId) fd.append('invoice_id', currentInvoiceId);
+    fetch('ajax/send_message.php', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': csrf } })
+      .then(r => r.json())
+      .then(handleReply)
+      .catch(handleConnectionError);
+  }
+
+  function handleReply(data) {
+    setWaiting(false);
+    if (data.error) { appendBotMessage({ type: 'text', content: 'Error: ' + data.error }); return; }
+    if (data.invoice_id) currentInvoiceId = data.invoice_id;
+    (data.messages || []).forEach(m => appendBotMessage(m));
+    if (data.usage) {
+      const badge = document.getElementById('usageBadge');
+      if (badge) badge.textContent = data.usage.replace(/^\w+ · /, '').replace(' left', ' documents left').replace(' + ', ' · ');
+    }
+    scrollBottom();
+    loadChatList();
+  }
+
+  function handleConnectionError(err) {
+    setWaiting(false);
+    appendBotMessage({ type: 'text', content: 'Connection problem. Check your internet and try again.' });
+    console.error(err);
   }
 
   // ── Render messages ───────────────────────────────────────────────

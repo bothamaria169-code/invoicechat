@@ -18,7 +18,9 @@ if (!isLoggedIn()) jsonResponse(['error' => 'Unauthenticated'], 401);
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'Method not allowed'], 405);
 if (!csrfValid()) jsonResponse(['error' => 'Session expired — refresh the page.'], 419);
 
-$body      = json_decode(file_get_contents('php://input'), true) ?? [];
+// A photo comes as multipart form data (photo + optional caption); text as JSON.
+$photo     = $_FILES['photo'] ?? null;
+$body      = $photo ? $_POST : (json_decode(file_get_contents('php://input'), true) ?? []);
 $input     = trim((string)($body['message'] ?? ''));
 $invoiceId = isset($body['invoice_id']) ? (int)$body['invoice_id'] : null;
 if ($invoiceId === 0) $invoiceId = null;
@@ -55,17 +57,23 @@ if ($input === '__init__') {
 }
 
 // ── Save user message ─────────────────────────────────────────────
-if ($input !== '') {
+if ($input !== '' || $photo) {
     $db->prepare(
         'INSERT INTO chats (user_id, invoice_id, sender, message, message_type)
          VALUES (?, ?, "user", ?, "text")'
-    )->execute([$userId, $invoiceId, $input]);
+    )->execute([$userId, $invoiceId, $photo ? '📷 Photo' . ($input !== '' ? ': ' . $input : '') : $input]);
 }
 
 // ── Process through bot ───────────────────────────────────────────
 try {
     // "Describe it" AI drafts: /ai <sentence>, or a sentence typed while idle.
-    if (preg_match('#^/ai\b#i', $input)) {
+    if ($photo) {
+        $messages = aiDraftFromPhoto($userId, $photo, $input, $state, $botData, $invoiceId);
+    } elseif ($state === 'ai_fill' && !str_starts_with($input, '/')) {
+        $messages = aiFillAnswer($userId, $input, $state, $botData, $invoiceId);
+    } elseif ($state === 'ai_more' && !str_starts_with($input, '/')) {
+        $messages = aiDraftInChat($userId, $input, $state, $botData, $invoiceId);
+    } elseif (preg_match('#^/ai\b#i', $input)) {
         $text = trim(substr($input, 3));
         $messages = $text === ''
             ? [msg("Describe the invoice or quote in one message, e.g.\n\n*/ai Invoice Acme Ltd for 3 logo designs at R500 each and hosting R200, 15% VAT, due in 14 days*")]
@@ -204,8 +212,9 @@ function generatePdfInline(PDO $db, int $userId, int $invoiceId): array
             ? ['Send by Email', 'Send via WhatsApp', 'Accept quote', 'Done']
             : ['Send by Email', 'Send via WhatsApp', 'Done'];
 
+        $tip = $isQuote ? '' : bankingReminder($user);
         return [
-            ['type' => 'text',    'content' => "{$word} PDF generated successfully!"],
+            ['type' => 'text',    'content' => "{$word} PDF generated successfully!" . ($tip !== '' ? "\n\n" . $tip : '')],
             ['type' => 'file',    'url' => $url, 'label' => "Download {$invoice['invoice_number']}.pdf"],
             ['type' => 'buttons', 'content' => "What would you like to do next?",
              'buttons' => $buttons],

@@ -323,7 +323,7 @@ No logo yet? Make one free in a minute: " . APP_URL . "/logo.php"),
     private function stateIdle(string $input, string &$state, array &$data, ?int &$invoiceId): array
     {
         return [
-            $this->msg("I didn't understand that. Here's what you can do:"),
+            $this->msg("I didn't understand that. Here's what you can do — or tap 📷 to send a photo of an old invoice, quote or handwritten note:"),
             $this->buttons('Choose an action:', ['/new – Create invoice', '/quote – Create quote', '/ai – ✨ Describe it', '/help – Commands']),
         ];
     }
@@ -897,6 +897,7 @@ What is the *product or service name*?")];
                 . "/new — Create a new invoice\n"
                 . "/quote — Create a new quote\n"
                 . "/ai — ✨ Describe an invoice in one sentence and I'll draft it\n"
+                . "📷 — Send a photo of an old invoice, quote, slip or handwritten note and I'll copy it\n"
                 . "/convert — Convert active quote to invoice\n"
                 . "/settings — Update profile & defaults\n"
                 . "/history — Browse past invoices & quotes (sidebar)\n"

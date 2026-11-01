@@ -217,3 +217,10 @@ function numberToWords(int $num): string
     }
     return trim($out);
 }
+
+/** A nudge when invoices would go out without "How to pay" details; '' when they're set. */
+function bankingReminder(array $user): string
+{
+    if (trim((string) ($user['bank_details'] ?? '')) !== '') return '';
+    return "💡 Your banking details aren't set yet, so clients won't see how to pay you. Add them in a minute: " . APP_URL . "/setup.php — or type /settings and tap *Bank*.";
+}
