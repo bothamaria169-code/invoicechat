@@ -97,7 +97,7 @@ pageHead(APP_NAME . ' — Send invoices & quotes from a chat', [
 <?php require_once __DIR__ . '/includes/billing.php'; $bc = billingConfig(); ?>
 <section class="section" id="pricing" style="padding-top:0">
   <div class="wrap">
-    <div class="section__head"><h2>Simple pricing for every business</h2><p>Plumbers, salons, caterers, shops, consultants, builders — if you send invoices or quotes, this is for you. Pay with an OTT voucher from any shop; no card needed.</p></div>
+    <div class="section__head"><h2>Simple pricing for every business</h2><p>Plumbers, salons, caterers, shops, consultants, builders — if you send invoices or quotes, this is for you. Pay by bank deposit, or with an OTT voucher or 1Voucher from any shop; no card needed.</p></div>
     <div class="grid-3 pricing">
       <div class="feature price">
         <h3>Free</h3><div class="price__amt">R0</div><p>For getting started</p>
@@ -112,7 +112,7 @@ pageHead(APP_NAME . ' — Send invoices & quotes from a chat', [
       </div>
       <div class="feature price">
         <h3>Top-ups</h3><div class="price__amt">R<?= $bc['pack_price'] ?><small>/<?= $bc['pack_size'] ?> docs</small></div><p>Only pay for what you use</p>
-        <ul><li><?= $bc['pack_size'] ?> extra invoices or quotes</li><li>Credits never expire</li><li>Works on Free or Pro</li><li>Buy with an OTT voucher</li></ul>
+        <ul><li><?= $bc['pack_size'] ?> extra invoices or quotes</li><li>Credits never expire</li><li>Works on Free or Pro</li><li>Pay by EFT, OTT or 1Voucher</li></ul>
         <a href="register.php" class="btn btn-ghost btn-block">Get started</a>
       </div>
     </div>

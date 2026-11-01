@@ -5,7 +5,7 @@ require_once __DIR__ . '/_shell.php';
 require_once BASE_DIR . '/includes/billing.php';
 
 $db  = getDB();
-$tab = in_array($_GET['tab'] ?? '', ['pending', 'done', 'pricing'], true) ? $_GET['tab'] : 'pending';
+$tab = in_array($_GET['tab'] ?? '', ['pending', 'done', 'pricing', 'methods'], true) ? $_GET['tab'] : 'pending';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = (string) ($_POST['form'] ?? '');
@@ -16,6 +16,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : rejectPayment($id, (int) $ADMIN['id'], trim((string) ($_POST['note'] ?? '')));
         flash($err === '' ? 'success' : 'error', $err ?: (($_POST['do'] ?? '') === 'approve' ? 'Approved — the customer was emailed.' : 'Rejected — the customer was emailed the reason.'));
         redirect('admin/payments.php');
+    }
+    if ($form === 'methods') {
+        foreach (['eft_holder', 'eft_bank', 'eft_branch', 'eft_type'] as $k) {
+            set_setting($k, mb_substr(trim((string) ($_POST[$k] ?? '')), 0, 100));
+        }
+        set_setting('eft_account', preg_replace('/\D/', '', (string) ($_POST['eft_account'] ?? '')));
+        foreach (['pay_eft_on', 'pay_ott_on', 'pay_1voucher_on'] as $k) {
+            set_setting($k, empty($_POST[$k]) ? '0' : '1');
+        }
+        flash('success', 'Payment methods saved.' . (ownerBankDetails()['account'] === '' && !empty($_POST['pay_eft_on']) ? ' Add your account number to switch bank deposits on.' : ''));
+        redirect('admin/payments.php?tab=methods');
     }
     if ($form === 'pricing') {
         foreach (['bill_free_docs', 'bill_pro_docs', 'bill_pro_price', 'bill_pack_price', 'bill_pack_size', 'bill_free_ai', 'bill_pro_ai', 'bill_signup_gift'] as $k) {
@@ -32,10 +43,10 @@ $allTime      = (float) $db->query("SELECT COALESCE(SUM(amount),0) FROM payments
 $proUsers     = (int) $db->query("SELECT COUNT(*) FROM users WHERE plan = 'pro' AND plan_expires_at > NOW()")->fetchColumn();
 $packages     = billingPackages();
 
-adminOpen('payments', 'Payments', 'OTT vouchers to verify, revenue and pricing.');
+adminOpen('payments', 'Payments', 'Deposits and vouchers to verify, revenue and pricing.');
 ?>
 <div class="kpis">
-  <div class="kpi kpi--amber"><div class="kpi__ico"><i class="fa-solid fa-hourglass-half"></i></div><div><div class="kpi__label">Waiting for you</div><div class="kpi__value"><?= $pendingCount ?></div><div class="kpi__delta">vouchers to verify</div></div></div>
+  <div class="kpi kpi--amber"><div class="kpi__ico"><i class="fa-solid fa-hourglass-half"></i></div><div><div class="kpi__label">Waiting for you</div><div class="kpi__value"><?= $pendingCount ?></div><div class="kpi__delta">payments to verify</div></div></div>
   <div class="kpi kpi--mint"><div class="kpi__ico"><i class="fa-solid fa-sack-dollar"></i></div><div><div class="kpi__label">Revenue this month</div><div class="kpi__value"><?= moneyZar($month) ?></div><div class="kpi__delta"><?= moneyZar($allTime) ?> all time</div></div></div>
   <div class="kpi kpi--violet"><div class="kpi__ico"><i class="fa-solid fa-gem"></i></div><div><div class="kpi__label">Pro customers</div><div class="kpi__value"><?= $proUsers ?></div><div class="kpi__delta"><?= moneyZar($proUsers * billingConfig()['pro_price']) ?> a month</div></div></div>
   <div class="kpi"><div class="kpi__ico"><i class="fa-solid fa-coins"></i></div><div><div class="kpi__label">Credits held</div><div class="kpi__value"><?= number_format((int) $db->query('SELECT COALESCE(SUM(credits),0) FROM users')->fetchColumn()) ?></div><div class="kpi__delta">unused, across all users</div></div></div>
@@ -45,9 +56,42 @@ adminOpen('payments', 'Payments', 'OTT vouchers to verify, revenue and pricing.'
   <a href="?tab=pending" class="<?= $tab === 'pending' ? 'is-on' : '' ?>"><i class="fa-solid fa-inbox"></i> To verify (<?= $pendingCount ?>)</a>
   <a href="?tab=done" class="<?= $tab === 'done' ? 'is-on' : '' ?>"><i class="fa-solid fa-clock-rotate-left"></i> History</a>
   <a href="?tab=pricing" class="<?= $tab === 'pricing' ? 'is-on' : '' ?>"><i class="fa-solid fa-tags"></i> Prices & plans</a>
+  <a href="?tab=methods" class="<?= $tab === 'methods' ? 'is-on' : '' ?>"><i class="fa-solid fa-building-columns"></i> How you get paid</a>
 </nav>
 
-<?php if ($tab === 'pricing'): $c = billingConfig(); ?>
+<?php if ($tab === 'methods'): $b = ownerBankDetails(); $pm = paymentMethods(); ?>
+<div class="grid-2">
+  <section class="card">
+    <div class="card__head"><div><h2>How customers can pay</h2><p>Only the methods you tick show on the billing page.</p></div></div>
+    <form method="POST" class="card__body"><?= csrfField() ?><input type="hidden" name="form" value="methods">
+      <label class="check"><input type="checkbox" name="pay_eft_on" value="1" <?= get_setting('pay_eft_on', '1') === '1' ? 'checked' : '' ?>> Bank deposit (EFT) with proof of payment</label>
+      <label class="check"><input type="checkbox" name="pay_ott_on" value="1" <?= get_setting('pay_ott_on', '1') === '1' ? 'checked' : '' ?>> OTT voucher</label>
+      <label class="check"><input type="checkbox" name="pay_1voucher_on" value="1" <?= get_setting('pay_1voucher_on', '1') === '1' ? 'checked' : '' ?>> 1Voucher</label>
+      <h3 style="font-size:.95rem;font-family:var(--font);margin:1.2rem 0 .6rem">Your bank account (for deposits)</h3>
+      <div class="form-grid">
+        <div class="field full"><label>Account holder</label><input name="eft_holder" value="<?= e($b['holder']) ?>" placeholder="SwiftFusion (Pty) Ltd"></div>
+        <div class="field"><label>Bank</label><input name="eft_bank" value="<?= e($b['bank']) ?>" placeholder="FNB"></div>
+        <div class="field"><label>Account number</label><input name="eft_account" inputmode="numeric" value="<?= e($b['account']) ?>"></div>
+        <div class="field"><label>Branch code</label><input name="eft_branch" inputmode="numeric" value="<?= e($b['branch']) ?>" placeholder="250655"></div>
+        <div class="field"><label>Account type</label><input name="eft_type" value="<?= e($b['type']) ?>" placeholder="Cheque / Current"></div>
+      </div>
+      <div class="form-foot"><button class="btn btn-primary">Save</button></div>
+    </form>
+  </section>
+  <section class="card">
+    <div class="card__head"><h2>Right now</h2></div>
+    <div class="card__body">
+      <?php foreach ($pm as $m): ?><div class="status-line <?= $m['on'] ? 'ok' : 'off' ?>"><span class="dot"></span><?= e($m['label']) ?> — <?= $m['on'] ? 'shown to customers' : 'hidden' ?></div><?php endforeach; ?>
+      <ol class="steps-list" style="margin-top:1rem">
+        <li><strong>Deposits:</strong> each customer always uses the same reference (IC + their number, e.g. IC00042), so you can spot them on your statement.</li>
+        <li><strong>OTT:</strong> redeem PINs in your OTT merchant portal or app.</li>
+        <li><strong>1Voucher:</strong> redeem PINs in your 1Voucher merchant portal (sign up as a merchant at 1voucher.co.za first).</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<?php elseif ($tab === 'pricing'): $c = billingConfig(); ?>
 <section class="card" style="max-width:820px">
   <div class="card__head"><div><h2>Prices & plans</h2><p>Changes apply immediately to the billing page, the chat and the landing page.</p></div></div>
   <form method="POST" class="card__body"><?= csrfField() ?><input type="hidden" name="form" value="pricing">
@@ -70,20 +114,22 @@ adminOpen('payments', 'Payments', 'OTT vouchers to verify, revenue and pricing.'
         ? $db->query("SELECT p.*, u.email, u.full_name, u.company_name, u.phone FROM payments p JOIN users u ON u.id = p.user_id WHERE p.status = 'pending' ORDER BY p.id")->fetchAll()
         : $db->query("SELECT p.*, u.email, u.full_name, u.company_name, u.phone, a.email AS reviewer FROM payments p JOIN users u ON u.id = p.user_id LEFT JOIN users a ON a.id = p.reviewed_by WHERE p.status <> 'pending' ORDER BY p.reviewed_at DESC LIMIT 200")->fetchAll(); ?>
 <?php if ($tab === 'pending'): ?>
-  <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i><span>For each voucher: copy the PIN → redeem it in your <strong>OTT merchant portal / app</strong> → if it redeems for the right amount, press <strong>Approve</strong>. If it's already used or invalid, <strong>Reject</strong> with the reason.</span></div>
+  <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i><span><strong>Bank deposit:</strong> check your bank account for the reference and amount → <strong>Approve</strong>. <strong>Voucher:</strong> copy the PIN → redeem it in your OTT or 1Voucher merchant portal → if it redeems for the right amount, <strong>Approve</strong>. If not, <strong>Reject</strong> with the reason.</span></div>
 <?php endif; ?>
 <section class="card">
   <?php if (!$rows): ?><div class="empty"><i class="fa-solid fa-mug-hot"></i><?= $tab === 'pending' ? 'Nothing to verify. 🎉' : 'No reviewed payments yet.' ?></div><?php else: ?>
   <table class="tbl">
-    <thead><tr><th>Customer</th><th>Package</th><th>Voucher</th><th>Slip</th><th>Submitted</th><th><?= $tab === 'pending' ? '' : 'Result' ?></th></tr></thead>
+    <thead><tr><th>Customer</th><th>Package</th><th>Payment</th><th>Proof</th><th>Submitted</th><th><?= $tab === 'pending' ? '' : 'Result' ?></th></tr></thead>
     <tbody>
     <?php foreach ($rows as $p): $pkg = $packages[$p['package']] ?? ['label' => $p['package'], 'price' => $p['amount']]; $short = (float) $p['voucher_amount'] < (float) $p['amount']; ?>
       <tr>
         <td class="cell-main"><a class="who" href="users.php?id=<?= (int) $p['user_id'] ?>" style="color:inherit;text-decoration:none"><div class="avatar"><?= e(strtoupper(mb_substr($p['full_name'] ?: $p['email'], 0, 1))) ?></div><div><strong><?= e($p['full_name'] ?: ($p['company_name'] ?: $p['email'])) ?></strong><small><?= e($p['email']) ?></small></div></a></td>
         <td data-label="Package"><strong><?= e($pkg['label']) ?></strong><br><span class="muted">R<?= number_format((float) $p['amount'], 2) ?></span></td>
-        <td data-label="Voucher"><div class="copy-box" style="margin:0;display:inline-flex"><code><?= e(trim(chunk_split((string) $p['voucher_pin'], 4, ' '))) ?></code><button type="button" class="btn-xs" data-copy="<?= e($p['voucher_pin']) ?>"><i class="fa-regular fa-copy"></i></button></div>
-          <br><span class="muted" style="<?= $short ? 'color:var(--coral)' : '' ?>">Voucher: R<?= number_format((float) $p['voucher_amount'], 2) ?></span></td>
-        <td data-label="Slip"><?= $p['proof_path'] ? '<a class="btn-xs" target="_blank" href="slip.php?id=' . (int) $p['id'] . '"><i class="fa-regular fa-image"></i> View</a>' : '<span class="muted">—</span>' ?></td>
+        <td data-label="Payment"><span class="tag"><?= e(paymentMethods()[$p['method']]['short'] ?? $p['method']) ?></span>
+          <?php $code = $p['method'] === 'eft' ? (string) $p['reference'] : (string) $p['voucher_pin']; ?>
+          <div class="copy-box" style="margin:0;display:inline-flex"><code><?= e($p['method'] === 'eft' ? $code : trim(chunk_split($code, 4, ' '))) ?></code><button type="button" class="btn-xs" data-copy="<?= e($code) ?>"><i class="fa-regular fa-copy"></i></button></div>
+          <br><span class="muted" style="<?= $short ? 'color:var(--coral)' : '' ?>"><?= $p['method'] === 'eft' ? 'Paid' : 'Voucher' ?>: R<?= number_format((float) $p['voucher_amount'], 2) ?></span></td>
+        <td data-label="Proof"><?= $p['proof_path'] ? '<a class="btn-xs" target="_blank" href="slip.php?id=' . (int) $p['id'] . '"><i class="fa-regular fa-image"></i> View</a>' : '<span class="muted">—</span>' ?></td>
         <td data-label="Submitted" class="muted"><?= timeAgo($p['created_at']) ?></td>
         <td>
           <?php if ($p['status'] === 'pending'): ?>

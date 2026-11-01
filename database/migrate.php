@@ -7,7 +7,7 @@ declare(strict_types=1);
  * the version reached. Works on MySQL and MariaDB (columns are checked in
  * information_schema rather than with MariaDB-only "ADD COLUMN IF NOT EXISTS").
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function runMigrations(PDO $db): void
 {
@@ -29,6 +29,7 @@ function runMigrations(PDO $db): void
         if ($v < 2) migrationV2($db);
         if ($v < 3) migrationV3($db);
         if ($v < 4) migrationV4($db);
+        if ($v < 5) migrationV5($db);
         $db->prepare("REPLACE INTO app_settings (k, v) VALUES ('schema_version', ?)")->execute([(string) SCHEMA_VERSION]);
     } finally {
         $db->query("SELECT RELEASE_LOCK('invoicechat_migrate')");
@@ -380,6 +381,15 @@ function migrationV4(PDO $db): void
                AND c.name_key COLLATE utf8mb4_general_ci = LOWER(TRIM(i.client_name)) COLLATE utf8mb4_general_ci
                SET i.client_id = c.id WHERE i.client_id IS NULL");
     $db->exec("UPDATE invoices SET paid_at = created_at WHERE status = 'paid' AND paid_at IS NULL");
+}
+
+/** Bank deposits (EFT): the payment reference the customer used. */
+function migrationV5(PDO $db): void
+{
+    addColumn($db, 'payments', 'reference', 'VARCHAR(24) NULL AFTER method');
+    if (!indexExists($db, 'payments', 'idx_reference')) {
+        $db->exec('ALTER TABLE payments ADD INDEX idx_reference (reference)');
+    }
 }
 
 /** The admin@ account: created if missing, and always kept an active admin. */

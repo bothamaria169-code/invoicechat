@@ -13,7 +13,8 @@ require_once __DIR__ . '/auth.php';
  *
  * A document is charged once, the first time its PDF is made; re-making the
  * PDF after an edit is free. Prices and allowances are in Admin → Billing.
- * Payment is an OTT voucher the admin checks and approves (payments table).
+ * Payment is a bank deposit (EFT) with proof, an OTT voucher or a 1Voucher;
+ * the admin checks each one and approves it (payments table).
  */
 function billingConfig(): array
 {
@@ -39,6 +40,40 @@ function billingPackages(): array
         'pro_1'     => ['label' => 'Pro · 1 month',   'price' => $c['pro_price'],     'credits' => 0, 'months' => 1, 'note' => $c['pro_docs'] . ' documents a month, no footer, AI assistant'],
         'pro_3'     => ['label' => 'Pro · 3 months',  'price' => $c['pro_price'] * 3, 'credits' => 0, 'months' => 3, 'note' => 'Same as Pro, paid for 3 months'],
     ];
+}
+
+/** Ways to pay, in the order the billing page shows them. Admin → Payments → How you get paid. */
+function paymentMethods(): array
+{
+    $bank = ownerBankDetails();
+    return [
+        'eft'      => ['label' => 'Bank deposit (EFT)', 'short' => 'EFT',      'icon' => 'fa-building-columns', 'on' => get_setting('pay_eft_on', '1') === '1' && $bank['account'] !== ''],
+        'ott'      => ['label' => 'OTT voucher',        'short' => 'OTT',      'icon' => 'fa-ticket',           'on' => get_setting('pay_ott_on', '1') === '1'],
+        '1voucher' => ['label' => '1Voucher',           'short' => '1Voucher', 'icon' => 'fa-ticket-simple',    'on' => get_setting('pay_1voucher_on', '1') === '1'],
+    ];
+}
+
+function methodLabel(string $method): string
+{
+    return paymentMethods()[$method]['label'] ?? strtoupper($method);
+}
+
+/** The owner's account that customers deposit into. */
+function ownerBankDetails(): array
+{
+    return [
+        'holder'  => get_setting('eft_holder'),
+        'bank'    => get_setting('eft_bank'),
+        'account' => get_setting('eft_account'),
+        'branch'  => get_setting('eft_branch'),
+        'type'    => get_setting('eft_type'),
+    ];
+}
+
+/** The same reference every time for a customer, so admins can match deposits on the statement. */
+function eftReference(array $user): string
+{
+    return 'IC' . str_pad((string) $user['id'], 5, '0', STR_PAD_LEFT);
 }
 
 function isPro(array $user): bool
@@ -102,7 +137,7 @@ function chargeDocument(int $userId, int $invoiceId): string
     return "You've used all {$u['allowance']} documents included in your *{$u['plan']}* plan this month, and you have no credits left.\n\n"
          . "• Top up: *R{$c['pack_price']} = {$c['pack_size']} documents* (credits never expire)\n"
          . ($u['pro'] ? '' : "• Or go *Pro for R{$c['pro_price']}/month*: {$c['pro_docs']} documents a month, no footer, AI assistant\n")
-         . "\nPay with an OTT voucher from any shop: " . APP_URL . '/billing.php';
+         . "\nPay by bank deposit (EFT), OTT voucher or 1Voucher: " . APP_URL . '/billing.php';
 }
 
 /** Undoes chargeDocument() when the PDF then failed to render. */
@@ -135,7 +170,7 @@ function extendPro(int $userId, int $months, string $note = '', ?int $adminId = 
         ->execute([$userId, "Pro +{$months} month(s) until " . date('j M Y', strtotime($until)) . ($note ? " · {$note}" : ''), $adminId]);
 }
 
-/** Admin approved an OTT voucher: give the user what they paid for and tell them. */
+/** Admin approved a payment: give the user what they paid for and tell them. */
 function approvePayment(int $paymentId, int $adminId, string $note = ''): string
 {
     $db = getDB();
@@ -146,14 +181,15 @@ function approvePayment(int $paymentId, int $adminId, string $note = ''): string
     $p   = $db->query('SELECT * FROM payments WHERE id = ' . $paymentId)->fetch();
     $pkg = billingPackages()[$p['package']] ?? null;
     if (!$pkg) return 'Unknown package.';
-    if ($pkg['credits']) addCredits((int) $p['user_id'], $pkg['credits'], 'purchase', 'OTT voucher #' . $paymentId, $adminId);
-    if ($pkg['months'])  extendPro((int) $p['user_id'], $pkg['months'], 'OTT voucher #' . $paymentId, $adminId);
+    $via = methodLabel((string) $p['method']);
+    if ($pkg['credits']) addCredits((int) $p['user_id'], $pkg['credits'], 'purchase', $via . ' #' . $paymentId, $adminId);
+    if ($pkg['months'])  extendPro((int) $p['user_id'], $pkg['months'], $via . ' #' . $paymentId, $adminId);
 
     $u = freshUser((int) $p['user_id']);
     $what = $pkg['credits'] ? "<strong>{$pkg['credits']} document credits</strong> were added. Your balance is now <strong>{$u['credits']}</strong>."
                             : '<strong>Pro</strong> is active until <strong>' . date('j F Y', strtotime($u['plan_expires_at'])) . '</strong>.';
     sendMail($u['email'], 'Payment approved — ' . $pkg['label'], emailLayout('Thank you — you\'re all set!',
-        '<p>We verified your OTT voucher of <strong>R' . number_format((float) $p['amount'], 2) . '</strong>. ' . $what . '</p>', 'Create an invoice', APP_URL . '/chat.php'));
+        '<p>We verified your ' . ($p['method'] === 'eft' ? 'bank deposit' : $via) . ' of <strong>R' . number_format((float) ($p['voucher_amount'] ?: $p['amount']), 2) . '</strong>. ' . $what . '</p>', 'Create an invoice', APP_URL . '/chat.php'));
     return '';
 }
 
@@ -161,13 +197,16 @@ function rejectPayment(int $paymentId, int $adminId, string $reason): string
 {
     $db = getDB();
     $s = $db->prepare("UPDATE payments SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), admin_note = ? WHERE id = ? AND status = 'pending'");
-    $s->execute([$adminId, $reason ?: 'Voucher could not be verified', $paymentId]);
+    $s->execute([$adminId, $reason ?: 'Payment could not be verified', $paymentId]);
     if ($s->rowCount() !== 1) return 'That payment was already reviewed.';
     $p = $db->query('SELECT p.*, u.email FROM payments p JOIN users u ON u.id = p.user_id WHERE p.id = ' . $paymentId)->fetch();
-    sendMail($p['email'], 'We couldn\'t verify your OTT voucher', emailLayout('Payment not approved',
-        '<p>We couldn\'t verify the OTT voucher you sent for <strong>' . e(billingPackages()[$p['package']]['label'] ?? $p['package']) . '</strong>.</p>'
-        . '<p><strong>Reason:</strong> ' . e($reason ?: 'The voucher could not be verified') . '</p>'
-        . '<p>Please check the PIN and try again, or reply to this email and we\'ll help.</p>', 'Try again', APP_URL . '/billing.php'));
+    $eft  = $p['method'] === 'eft';
+    $what = $eft ? 'bank deposit' : methodLabel((string) $p['method']);
+    sendMail($p['email'], 'We couldn\'t verify your ' . $what, emailLayout('Payment not approved',
+        '<p>We couldn\'t verify the ' . e($what) . ' you sent for <strong>' . e(billingPackages()[$p['package']]['label'] ?? $p['package']) . '</strong>.</p>'
+        . '<p><strong>Reason:</strong> ' . e($reason ?: 'The payment could not be verified') . '</p>'
+        . '<p>' . ($eft ? 'Deposits between banks can take up to 2 business days to clear. Check the reference and proof of payment and try again' : 'Please check the PIN and try again')
+        . ', or reply to this email and we\'ll help.</p>', 'Try again', APP_URL . '/billing.php'));
     return '';
 }
 
