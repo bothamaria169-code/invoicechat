@@ -157,9 +157,18 @@ function aiNormalizeDoc(array $d, array $defaults): array
  */
 function aiParseDocument(array $user, string $text, array $defaults): array
 {
-    $r = groqJson("You turn a South African small-business owner's message into an invoice or quote.\n" . aiDocRules(), $text);
+    $r = groqJson("You turn a South African small-business owner's message into an invoice or quote.\n" . aiDocRules() . aiSavedProducts((int) $user['id']), $text);
     logAi((int) $user['id'], 'draft', $r['ok']);
     return $r['ok'] ? ['ok' => true, 'error' => '', 'doc' => aiNormalizeDoc($r['data'], $defaults)] : ['ok' => false, 'doc' => [], 'error' => $r['error']];
+}
+
+/** The user's saved products (Settings → Products) as extra rules, so "2x callout" gets their price. */
+function aiSavedProducts(int $userId): string
+{
+    $s = getDB()->prepare('SELECT name, unit_price FROM products WHERE user_id = ? ORDER BY use_count DESC, name LIMIT 40');
+    $s->execute([$userId]);
+    $lines = array_map(fn($p) => '- ' . $p['name'] . ': ' . number_format((float) $p['unit_price'], 2, '.', ''), $s->fetchAll());
+    return $lines ? "\n- The owner's saved products and unit prices are below. When an item matches one (loosely, e.g. \"callout\" = \"Call-out fee\"), use its exact name and, if no price is given, its price:\n" . implode("\n", $lines) : '';
 }
 
 /**
@@ -173,23 +182,11 @@ function aiReadImage(array $user, string $jpegPath, string $caption, array $defa
         . "Copy what you can read; never guess numbers you can't read (list them in \"missing\"). The client is who the document is addressed to (\"Bill to\", \"To\", \"Customer\"), not the business that issued it. "
         . "Use the unit price per line, not the line total. Ignore subtotals, VAT lines and totals as items.\n"
         . ($caption !== '' ? "The owner added this note, which overrides the photo: \"{$caption}\"\n" : '')
-        . aiDocRules();
-    $parts = [['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($jpegPath))]]];
+        . aiDocRules() . aiSavedProducts((int) $user['id']);
+    $parts =[['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($jpegPath))]]];
     $r = groqJson($system, $parts, 1500, aiVisionModel());
     logAi((int) $user['id'], 'image', $r['ok']);
     return $r['ok'] ? ['ok' => true, 'error' => '', 'doc' => aiNormalizeDoc($r['data'], $defaults)] : ['ok' => false, 'doc' => [], 'error' => $r['error']];
-}
-
-/** "R1 500,50", "1.5k", "450" → float; null when it isn't an amount. */
-function parseAmount(string $s): ?float
-{
-    $s = str_replace(['zar', 'r', ' ', "\u{a0}"], '', strtolower(trim($s)));
-    $k = str_ends_with($s, 'k');
-    if ($k) $s = substr($s, 0, -1);
-    if (preg_match('/^\d+,\d{1,2}$/', $s)) $s = str_replace(',', '.', $s);
-    $s = str_replace(',', '', $s);
-    if (!preg_match('/^\d+(\.\d+)?$/', $s)) return null;
-    return (float) $s * ($k ? 1000 : 1);
 }
 
 /** Messages to show instead of an AI draft when the AI is off or used up; [] when it may run. */
@@ -322,7 +319,15 @@ function aiCreateDraft(int $userId, array $doc, string $intro, string &$state, a
         'client_name' => $doc['client_name'] ?: 'Client', 'client_email' => $doc['client_email'], 'client_phone' => $doc['client_phone'], 'notes' => $doc['notes'],
     ], fn($v) => $v !== ''));
     $queue = $doc['client_name'] === '' ? [['ask' => 'client']] : [];
+    $saved = getDB()->prepare('SELECT unit_price, description FROM products WHERE user_id = ? AND name_key = ?');
     foreach ($doc['items'] as $it) {
+        if ($it['price'] <= 0) {
+            $saved->execute([$userId, mb_strtolower($it['name'])]);
+            if ($p = $saved->fetch()) {
+                $it['price'] = (float) $p['unit_price'];
+                $it['desc']  = $it['desc'] ?: (string) $p['description'];
+            }
+        }
         $itemId = $im->addItem($id, $it['name'], $it['qty'], $it['price'], $it['desc']);
         if ($it['price'] <= 0) $queue[] = ['ask' => 'price', 'item' => $itemId, 'name' => $it['name']];
     }

@@ -391,9 +391,7 @@ No logo yet? Make one free in a minute: " . APP_URL . "/logo.php"),
             $this->im->update($invoiceId, $this->userId, array_filter(['client_email' => $c['email'], 'client_phone' => $c['phone']]));
             $state = 'product_name';
             $on = implode(' · ', array_filter([$c['email'], $c['phone']]));
-            return [$this->msg("Using *{$c['name']}*" . ($on ? " ({$on})" : '') . ".
-
-What is the *product or service name*?")];
+            return [$this->askProduct("Using *{$c['name']}*" . ($on ? " ({$on})" : '') . ".\n\nWhat is the *product or service name*?")];
         }
         $state = 'invoice_client_email';
         return [
@@ -421,7 +419,7 @@ What is the *product or service name*?")];
             $this->im->update($invoiceId, $this->userId, ['client_phone' => $input]);
         }
         $state = 'product_name';
-        return [$this->msg("Let's add your products/services.\n\nWhat is the *product or service name*?")];
+        return [$this->askProduct("Let's add your products/services.\n\nWhat is the *product or service name*?")];
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -431,6 +429,15 @@ What is the *product or service name*?")];
     private function stateProductName(string $input, string &$state, array &$data, ?int &$invoiceId): array
     {
         if (strlen($input) < 1) return [$this->msg("Please enter a product or service name.")];
+        // A saved product (Settings → Products): its price and description are filled in.
+        $saved = $this->db->prepare('SELECT * FROM products WHERE user_id = ? AND name_key = ?');
+        $saved->execute([$this->userId, mb_strtolower(trim($input))]);
+        if ($p = $saved->fetch()) {
+            $data['product'] = ['name' => $p['name'], 'price' => (float) $p['unit_price'], 'desc' => (string) $p['description'], 'saved' => (int) $p['id']];
+            $state = 'product_qty';
+            $currency = $this->im->get((int) $invoiceId, $this->userId)['currency'] ?? 'ZAR';
+            return [$this->msg("Quantity for *{$p['name']}*? (" . $this->money((float) $p['unit_price'], $currency) . " each)")];
+        }
         $data['product'] = ['name' => $input];
         $state = 'product_qty';
         return [$this->msg("Quantity for *{$input}*?")];
@@ -442,6 +449,10 @@ What is the *product or service name*?")];
             return [$this->msg("Please enter a valid quantity (e.g. 1, 2.5).")];
         }
         $data['product']['qty'] = (float)$input;
+        if (isset($data['product']['saved'], $data['product']['price'])) {
+            $this->db->prepare('UPDATE products SET use_count = use_count + 1 WHERE id = ?')->execute([$data['product']['saved']]);
+            return $this->stateProductDesc($data['product']['desc'] !== '' ? $data['product']['desc'] : 'skip', $state, $data, $invoiceId);
+        }
         $state = 'product_price';
         return [$this->msg("Unit price for *{$data['product']['name']}*? (numbers only, e.g. 150.00)")];
     }
@@ -492,7 +503,7 @@ What is the *product or service name*?")];
         $lower = strtolower($input);
         if (str_contains($lower, 'add') || str_contains($lower, 'another')) {
             $state = 'product_name';
-            return [$this->msg("What is the next product or service name?")];
+            return [$this->askProduct("What is the next product or service name?")];
         }
 
         // Continue to invoice details
@@ -867,6 +878,15 @@ What is the *product or service name*?")];
     // Helpers
     // ─────────────────────────────────────────────────────────────
 
+    /** Asks for an item, offering the user's most-used saved products as buttons. */
+    private function askProduct(string $text): array
+    {
+        $s = $this->db->prepare('SELECT name FROM products WHERE user_id = ? ORDER BY use_count DESC, name LIMIT 8');
+        $s->execute([$this->userId]);
+        $names = $s->fetchAll(PDO::FETCH_COLUMN);
+        return $names ? $this->buttons($text . "\n\nTap a saved one or type a new one:", $names) : $this->msg($text);
+    }
+
     private function showSettingsMenu(): array
     {
         $s = $this->pm->getSettings($this->userId);
@@ -879,7 +899,8 @@ What is the *product or service name*?")];
             . "Template: {$s['template']}\n"
             . "Accent colour: " . ($s['accent_color'] ?? '#2563eb') . "\n"
             . "Payment terms: {$s['payment_terms']}\n\n"
-            . "What would you like to update?";
+            . "Manage everything on one page (logo, banking, products, numbering): " . APP_URL . "/settings.php\n\n"
+            . "Or tap what you'd like to update here:";
         return [
             $this->buttons($text, [
                 'Currency', 'Tax', 'Discount', 'Template', 'Color', 'Terms',

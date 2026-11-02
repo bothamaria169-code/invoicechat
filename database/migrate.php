@@ -7,7 +7,7 @@ declare(strict_types=1);
  * the version reached. Works on MySQL and MariaDB (columns are checked in
  * information_schema rather than with MariaDB-only "ADD COLUMN IF NOT EXISTS").
  */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function runMigrations(PDO $db): void
 {
@@ -30,6 +30,7 @@ function runMigrations(PDO $db): void
         if ($v < 3) migrationV3($db);
         if ($v < 4) migrationV4($db);
         if ($v < 5) migrationV5($db);
+        if ($v < 6) migrationV6($db);
         $db->prepare("REPLACE INTO app_settings (k, v) VALUES ('schema_version', ?)")->execute([(string) SCHEMA_VERSION]);
     } finally {
         $db->query("SELECT RELEASE_LOCK('invoicechat_migrate')");
@@ -390,6 +391,23 @@ function migrationV5(PDO $db): void
     if (!indexExists($db, 'payments', 'idx_reference')) {
         $db->exec('ALTER TABLE payments ADD INDEX idx_reference (reference)');
     }
+}
+
+/** Saved products & services (Settings → Products), offered in the chat and to the AI. */
+function migrationV6(PDO $db): void
+{
+    $db->exec("CREATE TABLE IF NOT EXISTS products (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        user_id     INT NOT NULL,
+        name        VARCHAR(200) NOT NULL,
+        name_key    VARCHAR(200) NOT NULL,
+        unit_price  DECIMAL(12,2) NOT NULL DEFAULT 0,
+        description VARCHAR(500) NULL,
+        use_count   INT NOT NULL DEFAULT 0,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_name (user_id, name_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 /** The admin@ account: created if missing, and always kept an active admin. */

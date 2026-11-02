@@ -29,7 +29,13 @@ class InvoiceManager
             $defaults['discount_percent'] ?? 0,
             $defaults['template']         ?? 'classic',
         ]);
-        return (int) $this->db->lastInsertId();
+        $id = (int) $this->db->lastInsertId();
+        // Settings → Invoices: the user's standard note (terms, thank-you) on every new document.
+        $notes = trim((string) ($this->userSettings($userId)['default_notes'] ?? ''));
+        if ($notes !== '') {
+            $this->db->prepare('UPDATE invoices SET notes = ? WHERE id = ?')->execute([$notes, $id]);
+        }
+        return $id;
     }
 
     // ── Fetch single invoice ──────────────────────────────────────
@@ -200,10 +206,19 @@ class InvoiceManager
         )->execute([$invoiceId, $userId]);
     }
 
+    private function userSettings(int $userId): array
+    {
+        $s = $this->db->prepare('SELECT settings FROM users WHERE id = ?');
+        $s->execute([$userId]);
+        return json_decode((string) $s->fetchColumn(), true) ?: [];
+    }
+
     // ── Generate next document number (INV-/QUO-YYYY-NNNNN) ───────
+    // The prefixes can be changed in Settings → Invoices.
     private function nextInvoiceNumber(int $userId, string $docType = 'invoice'): string
     {
-        $prefix = $docType === 'quote' ? 'QUO' : 'INV';
+        $set    = $this->userSettings($userId);
+        $prefix = $docType === 'quote' ? (($set['quote_prefix'] ?? '') ?: 'QUO') : (($set['invoice_prefix'] ?? '') ?: 'INV');
         $year   = date('Y');
         $like   = "{$prefix}-{$year}-%";
 

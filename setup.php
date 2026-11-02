@@ -6,6 +6,7 @@ declare(strict_types=1);
 // signing up; anyone can come back from the dashboard. Every step can be skipped.
 require_once __DIR__ . '/includes/billing.php';
 require_once __DIR__ . '/includes/logos.php';
+require_once __DIR__ . '/includes/profile.php';
 require_once __DIR__ . '/includes/layout.php';
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -17,37 +18,11 @@ $uid  = (int) $user['id'];
 $pm   = new \InvoiceChat\ProfileManager(getDB());
 $step = max(1, min(4, (int) ($_GET['step'] ?? 1)));
 
-const SA_BANKS = [
-    'ABSA Bank' => '632005', 'African Bank' => '430000', 'Bank Zero' => '888000', 'Bidvest Bank' => '462005',
-    'Capitec Bank' => '470010', 'Discovery Bank' => '679000', 'First National Bank (FNB)' => '250655', 'Investec Bank' => '580105',
-    'Nedbank' => '198765', 'Old Mutual' => '462005', 'Sasfin Bank' => '683000', 'Standard Bank' => '051001', 'TymeBank' => '678910',
-];
-const TEMPLATES = [
-    'classic'    => ['Classic', 'White and clean, logo left, colour rule'],
-    'modern'     => ['Modern', 'Bold colour header band'],
-    'freelancer' => ['Freelancer', 'Minimal, big "amount due" card'],
-    'corporate'  => ['Corporate', 'Dark header, boxed details'],
-    'banded'     => ['Banded', 'Colour side band, tinted boxes'],
-];
-
-/** "Account Holder: X\nBank Name: Y" → ['Account Holder' => 'X', ...] */
-function bankFields(?string $text): array
-{
-    $out = [];
-    foreach (preg_split('/\R/', (string) $text) as $line) {
-        if (preg_match('/^\s*([^:]+):\s*(.+)$/', $line, $m)) $out[trim($m[1])] = trim($m[2]);
-    }
-    return $out;
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireCsrf();
-    $t = fn(string $k, int $len = 255) => mb_substr(trim((string) ($_POST[$k] ?? '')), 0, $len);
 
     if ($step === 1) {
-        if ($t('company_name') === '') { flash('error', 'Please add your business name — it goes at the top of every invoice.'); redirect('setup.php?step=1'); }
-        $pm->update($uid, ['company_name' => $t('company_name'), 'address' => $t('address', 500), 'phone' => $t('phone', 50), 'website' => $t('website'), 'tax_number' => $t('tax_number', 100)]);
-        if ($t('full_name') !== '') getDB()->prepare('UPDATE users SET full_name = ? WHERE id = ?')->execute([$t('full_name', 150), $uid]);
+        if (($err = saveBusinessForm($uid, $pm)) !== '') { flash('error', $err); redirect('setup.php?step=1'); }
     } elseif ($step === 2 && !empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp_name'])) {
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($_FILES['logo']['tmp_name']);
         $ext  = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$mime] ?? null;
@@ -56,20 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'Logo uploaded.');
         redirect('setup.php?step=2');
     } elseif ($step === 3) {
-        $bank   = $t('bank_name', 100) === 'Other' ? $t('bank_other', 100) : $t('bank_name', 100);
-        $parts  = array_filter([
-            'Account Holder' => $t('holder', 150), 'Bank Name' => $bank, 'Account Number' => preg_replace('/[^\d ]/', '', $t('account', 30)),
-            'Branch Code' => preg_replace('/\D/', '', $t('branch', 10)), 'Account Type' => $t('type', 30),
-        ]);
-        $pm->update($uid, ['bank_details' => implode("\n", array_map(fn($k, $v) => "{$k}: {$v}", array_keys($parts), $parts)) ?: null]);
-        if ($t('payment_terms') !== '') $pm->updateSettings($uid, ['payment_terms' => $t('payment_terms', 100)]);
+        saveBankingForm($uid, $pm);
     } elseif ($step === 4) {
-        $pm->updateSettings($uid, [
-            'accent_color' => '#' . hexClean($t('accent_color', 7) ?: '#3b5bfd'),
-            'template'     => isset(TEMPLATES[$_POST['template'] ?? '']) ? $_POST['template'] : 'classic',
-            'tax_rate'     => max(0, min(100, (float) ($_POST['tax_rate'] ?? 0))),
-            'currency'     => preg_match('/^[A-Z]{3}$/', strtoupper($t('currency', 3))) ? strtoupper($t('currency', 3)) : 'ZAR',
-        ]);
+        saveLookForm($uid, $pm);
         $_SESSION['bot_state'] = 'idle';
         flash('success', 'All set! Type /new or describe your invoice to create the first one.');
         redirect('chat.php');
@@ -84,7 +48,7 @@ $bf       = bankFields($user['bank_details'] ?? '');
 $hasLogo  = !empty($user['logo_path']) && is_file($user['logo_path']);
 $steps    = [1 => 'Business', 2 => 'Logo', 3 => 'Banking', 4 => 'Look'];
 
-pageHead('Set up your business – ' . APP_NAME, ['css' => ['style.css', 'admin.css']]);
+pageHead('Set up your business – ' . APP_NAME, ['css' => ['style.css', 'admin.css', 'profile.css']]);
 ?>
 <body>
 <header class="site-nav"><div class="wrap"><?= brandMark() ?><nav><a href="chat.php">Skip for now</a></nav></div></header>
@@ -145,7 +109,7 @@ pageHead('Set up your business – ' . APP_NAME, ['css' => ['style.css', 'admin.
         <div class="field"><label>Account number</label><input name="account" inputmode="numeric" value="<?= e($bf['Account Number'] ?? '') ?>"></div>
         <div class="field"><label>Branch code</label><input name="branch" id="branch" inputmode="numeric" value="<?= e($bf['Branch Code'] ?? '') ?>"><div class="hint">Filled in for you with the bank's universal code.</div></div>
         <div class="field"><label>Account type</label><select name="type"><?php foreach (['', 'Cheque / Current', 'Savings', 'Business'] as $ty): ?><option <?= ($bf['Account Type'] ?? '') === $ty ? 'selected' : '' ?>><?= $ty ?></option><?php endforeach; ?></select></div>
-        <div class="field full"><label>Payment terms</label><select name="payment_terms"><?php foreach (['Due on receipt', 'Due in 7 days', 'Due in 14 days', 'Due in 30 days'] as $pt): ?><option <?= ($settings['payment_terms'] ?? '') === $pt ? 'selected' : '' ?>><?= $pt ?></option><?php endforeach; ?></select></div>
+        <div class="field full"><label>Payment terms</label><select name="payment_terms"><?php foreach (PAYMENT_TERMS as $pt): ?><option <?= ($settings['payment_terms'] ?? '') === $pt ? 'selected' : '' ?>><?= $pt ?></option><?php endforeach; ?></select></div>
       </div>
       <div class="form-foot"><a class="btn btn-ghost" href="?step=2"><i class="fa-solid fa-arrow-left"></i> Back</a><button class="btn btn-primary">Next: colours <i class="fa-solid fa-arrow-right"></i></button></div>
     </form>
@@ -171,7 +135,7 @@ pageHead('Set up your business – ' . APP_NAME, ['css' => ['style.css', 'admin.
       </div>
       <div class="form-grid">
         <div class="field"><label>Default VAT / tax %</label><select name="tax_rate"><?php foreach ([0 => 'No VAT (not registered)', 15 => '15% VAT'] as $v => $l): ?><option value="<?= $v ?>" <?= (float) $settings['tax_rate'] === (float) $v ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></div>
-        <div class="field"><label>Currency</label><select name="currency"><?php foreach (['ZAR', 'USD', 'EUR', 'GBP', 'BWP', 'NAD', 'NGN'] as $cu): ?><option <?= ($settings['currency'] ?? 'ZAR') === $cu ? 'selected' : '' ?>><?= $cu ?></option><?php endforeach; ?></select></div>
+        <div class="field"><label>Currency</label><select name="currency"><?php foreach (CURRENCIES as $cu): ?><option <?= ($settings['currency'] ?? 'ZAR') === $cu ? 'selected' : '' ?>><?= $cu ?></option><?php endforeach; ?></select></div>
       </div>
       <div class="form-foot"><a class="btn btn-ghost" href="?step=3"><i class="fa-solid fa-arrow-left"></i> Back</a><button class="btn btn-primary"><i class="fa-solid fa-check"></i> Finish & create an invoice</button></div>
     </form>
@@ -184,29 +148,6 @@ pageHead('Set up your business – ' . APP_NAME, ['css' => ['style.css', 'admin.
   .wizard span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: .75rem; flex-shrink: 0; }
   .wizard .on a { border-color: var(--brand); color: var(--brand); } .wizard .on span { background: var(--brand); color: #fff; }
   .wizard .done span { background: var(--mint); color: #fff; } .wizard .done a { color: var(--text); }
-  .swatch, .swatch-r span { width: 40px; height: 40px; border-radius: 12px; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line); cursor: pointer; display: block; }
-  .swatch.is-on, .swatch-r input:checked + span { box-shadow: 0 0 0 3px var(--text); }
-  .swatch-r input[type=radio] { position: absolute; opacity: 0; }
-  .swatch-r { position: relative; cursor: pointer; }
-  .logo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .6rem; margin-top: .8rem; }
-  .logo-pick { border: 2px solid var(--line); border-radius: 16px; background: var(--surface); padding: .6rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .3rem; font-weight: 700; font-size: .75rem; color: var(--brand); }
-  .logo-pick:hover { border-color: var(--brand); } .logo-pick img { width: 100%; aspect-ratio: 1; object-fit: contain; }
-  .logo-pick.saved { border-color: var(--mint); color: var(--mint); }
-  .upload-row { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
-  .cur-logo { display: flex; align-items: center; gap: .8rem; margin-bottom: 1rem; font-size: .85rem; color: var(--text-3); }
-  .cur-logo img { width: 64px; height: 64px; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-  .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .6rem; }
-  .tpl { border: 2px solid var(--line); border-radius: 14px; padding: .7rem; cursor: pointer; display: flex; flex-direction: column; gap: .2rem; font-size: .82rem; }
-  .tpl small { color: var(--text-3); font-size: .72rem; line-height: 1.3; }
-  .tpl input { position: absolute; opacity: 0; } .tpl:has(input:checked) { border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-50); }
-  .tpl__mini { display: block; height: 76px; border-radius: 8px; background: #fff; border: 1px solid var(--line); padding: 7px; margin-bottom: .4rem; position: relative; overflow: hidden; }
-  .tpl__mini i { display: block; height: 12px; width: 40%; background: var(--brand); border-radius: 3px; margin-bottom: 7px; }
-  .tpl__mini b { display: block; height: 5px; background: #e4e8f1; border-radius: 3px; margin-bottom: 4px; }
-  .tpl__mini em { position: absolute; right: 7px; bottom: 7px; width: 40%; height: 10px; background: var(--brand); border-radius: 3px; }
-  .tpl__mini--modern i, .tpl__mini--corporate i { width: auto; margin: -7px -7px 7px; height: 20px; border-radius: 0; }
-  .tpl__mini--corporate i { background: #0e1726; }
-  .tpl__mini--freelancer i { background: #0e1726; height: 6px; } .tpl__mini--freelancer em { top: 18px; bottom: auto; height: 16px; }
-  .tpl__mini--banded { border-left: 7px solid var(--brand); }
   @media (max-width: 560px) { .wizard a { flex-direction: column; font-size: .72rem; gap: .25rem; } }
 </style>
 <script>

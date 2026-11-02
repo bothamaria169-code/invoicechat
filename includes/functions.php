@@ -222,5 +222,17 @@ function numberToWords(int $num): string
 function bankingReminder(array $user): string
 {
     if (trim((string) ($user['bank_details'] ?? '')) !== '') return '';
-    return "💡 Your banking details aren't set yet, so clients won't see how to pay you. Add them in a minute: " . APP_URL . "/setup.php — or type /settings and tap *Bank*.";
+    return "💡 Your banking details aren't set yet, so clients won't see how to pay you. Add them in a minute: " . APP_URL . "/settings.php?tab=banking";
+}
+
+/** "R1 500,50", "1.5k", "450" → float; null when it isn't an amount. */
+function parseAmount(string $s): ?float
+{
+    $s = str_replace(['zar', 'r', ' ', "\u{a0}"], '', strtolower(trim($s)));
+    $k = str_ends_with($s, 'k');
+    if ($k) $s = substr($s, 0, -1);
+    if (preg_match('/^\d+,\d{1,2}$/', $s)) $s = str_replace(',', '.', $s);
+    $s = str_replace(',', '', $s);
+    if (!preg_match('/^\d+(\.\d+)?$/', $s)) return null;
+    return (float) $s * ($k ? 1000 : 1);
 }

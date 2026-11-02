@@ -96,6 +96,7 @@ pageHead('My dashboard – ' . APP_NAME, ['css' => ['style.css', 'admin.css']]);
   <nav>
     <a href="dashboard.php" class="hide-sm" style="color:var(--text)"><i class="fa-solid fa-gauge"></i> Dashboard</a>
     <a href="dashboard.php?tab=clients" class="hide-sm"><i class="fa-solid fa-address-book"></i> Clients</a>
+    <a href="settings.php" class="hide-sm"><i class="fa-solid fa-gear"></i> Settings</a>
     <a href="billing.php" class="hide-sm"><i class="fa-solid fa-gem"></i> <?= e(usageFor($user)['plan']) ?></a>
     <a href="chat.php" class="btn btn-primary"><i class="fa-solid fa-plus"></i> New invoice</a>
   </nav>
